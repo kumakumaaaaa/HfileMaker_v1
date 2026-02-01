@@ -423,7 +423,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
         <table className="w-full text-xs text-center border-separate border-spacing-0">
           <thead className="bg-gray-100">
             <tr>
-              <th className="p-2 border border-gray-300 min-w-[200px] text-left bg-gray-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] outline outline-1 outline-gray-300" 
+              <th className="p-2 border border-gray-300 min-w-[300px] text-left bg-gray-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] outline outline-1 outline-gray-300" 
                   style={{ position: 'sticky', top: 0, left: 0, zIndex: 60, background: '#f3f4f6' }}>項目 / 日付</th>
               {dateList.map((date, dateIdx) => {
                 const day = parseInt(date.split('-')[2]);
@@ -500,7 +500,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
             {(() => {
                 const renderRow = (item: NursingItemDefinition) => (
                    <tr key={item.id}>
-                    <td className="p-2 border border-gray-300 text-left bg-white truncate max-w-[200px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] outline outline-1 outline-gray-300" title={item.label} 
+                    <td className="p-2 border border-gray-300 text-left bg-white truncate max-w-[300px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] outline outline-1 outline-gray-300" title={item.label} 
                         style={{ position: 'sticky', left: 0, zIndex: 40, background: 'white' }}>
                       {item.label}
                     </td>
@@ -525,10 +525,24 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
 
                       // Dirty check (compare pending to stored)
                       let isDirty = false;
-                      if (pending && stored) {
-                          isDirty = true; 
-                      } else if (pending && !stored) {
-                          isDirty = true; // New data
+                      
+                      if (pending) {
+                          // Default values for comparison
+                          const defaultVal = item.inputType === 'checkbox' ? false : 0;
+                          
+                          const pVal = pending.items?.[item.id] ?? defaultVal;
+                          const sVal = stored?.items?.[item.id] ?? defaultVal;
+
+                          if (pVal !== sVal) {
+                              isDirty = true;
+                          }
+                          
+                          // Check assistance for B items
+                          if (!isDirty && item.category === 'b' && item.hasAssistance) {
+                              const pAssist = pending.items?.[`${item.id}_assist`] ?? 1;
+                              const sAssist = stored?.items?.[`${item.id}_assist`] ?? 1;
+                              if (pAssist !== sAssist) isDirty = true;
+                          }
                       }
                       
                       const isFocused = isEditing && focusedItemId === item.id;
