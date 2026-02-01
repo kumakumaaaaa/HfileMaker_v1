@@ -2,15 +2,23 @@
 
 import React, { useState, useEffect } from 'react';
 import { NursingAssessmentForm } from '../components/NursingAssessmentForm';
+import { MonthlyMatrixView } from '../components/MonthlyMatrixView';
 import { initializeStorage, getPatients, getAssessment, saveAssessment, getPreviousDayAssessment } from '../utils/storage';
 import { Patient, DailyAssessment } from '../types/nursing';
-import { User, Calendar, Save, Copy } from 'lucide-react';
+import { User } from 'lucide-react';
 
 export default function Home() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState<string>('');
   const [currentDate, setCurrentDate] = useState<string>('');
   const [loadedData, setLoadedData] = useState<DailyAssessment['items'] | undefined>(undefined);
+  const [lastUpdated, setLastUpdated] = useState<number>(0); // 初期値0で安全化
+  const [isMounted, setIsMounted] = useState(false);
+
+  // マウント判定
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // 初回ロード
   useEffect(() => {
@@ -37,7 +45,7 @@ export default function Home() {
     } else {
       setLoadedData(undefined); // 新規
     }
-  }, [selectedPatientId, currentDate]);
+  }, [selectedPatientId, currentDate, lastUpdated]); // lastUpdatedが変わった時もロードし直す
 
   const selectedPatient = patients.find(p => p.id === selectedPatientId);
 
@@ -51,11 +59,12 @@ export default function Home() {
       patientId: selectedPatientId,
       date: currentDate,
       items,
-      admissionFeeId: 'acute_general_5', // TODO: フォームから取得できるのが理想だが今回は固定
+      admissionFeeId: 'acute_general_5',
       scores,
       isSevere
     };
     saveAssessment(assessment);
+    setLastUpdated(Date.now()); // 更新通知 (マトリックスも再描画される)
   };
 
   const handleCopyPrevious = () => {
@@ -70,10 +79,14 @@ export default function Home() {
     }
   };
 
+  if (!isMounted) {
+    return <div className="flex h-screen items-center justify-center bg-gray-100">Loading...</div>;
+  }
+
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden">
       {/* サイドバー (患者リスト) */}
-      <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
+      <div className="w-64 bg-white border-r border-gray-200 flex flex-col shrink-0">
         <div className="p-4 border-b border-gray-200 bg-blue-50">
           <h1 className="text-lg font-bold text-blue-800 flex items-center gap-2">
             <User className="w-5 h-5" /> 患者一覧
@@ -96,12 +109,31 @@ export default function Home() {
           ))}
         </div>
         <div className="p-4 border-t border-gray-200 text-xs text-gray-400 text-center">
-          Nursing Assessment System v1.0
+          Nursing Assessment System v1.1
         </div>
       </div>
 
       {/* メインエリア */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+
+        {/* デバッグ用: 状態表示 (問題解決後削除予定) */}
+        {!selectedPatientId || !currentDate ? (
+            <div className="p-4 bg-yellow-100 text-yellow-800 rounded">
+                <p>Loading State... Patient: {selectedPatientId || 'None'}, Date: {currentDate || 'None'}</p>
+            </div>
+        ) : null}
+
+        {selectedPatientId && currentDate && (
+          <div className="border border-green-300 rounded p-1"> {/* 領域確認用ボーダー */}
+             <MonthlyMatrixView 
+                patientId={selectedPatientId}
+                currentDate={currentDate}
+                onDateSelect={setCurrentDate}
+                lastUpdated={lastUpdated}
+             />
+          </div>
+        )}
+
         <NursingAssessmentForm 
           key={`${selectedPatientId}-${currentDate}`}
           patientName={selectedPatient?.name}

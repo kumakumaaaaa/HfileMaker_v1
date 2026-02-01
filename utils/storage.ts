@@ -66,3 +66,28 @@ export const getPreviousDayAssessment = (patientId: string, currentDate: string)
   
   return getAssessment(patientId, prevDateStr);
 };
+
+// 月次データの取得 (指定月の全データを収集)
+export const getMonthlyAssessments = (patientId: string, yearMonth: string): Record<string, DailyAssessment> => {
+  if (typeof window === 'undefined') return {};
+
+  const assessments: Record<string, DailyAssessment> = {};
+  const prefix = `${STORAGE_KEY_ASSESSMENTS_PREFIX}${patientId}_${yearMonth}`;
+
+  // localStorageの全キーを走査して、prefixに一致するもの(つまり該当月の日付データ)を探す
+  // 日付キー形式: nursing_assessment_{patientId}_{YYYY-MM-DD}
+  // ただし prefix が {YYYY-MM} まで含んでいると、前方一致でフィルタ可能
+  
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith(prefix)) {
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        const assessment = JSON.parse(stored) as DailyAssessment;
+        // 日付をキーにして格納
+        assessments[assessment.date] = assessment;
+      }
+    }
+  }
+  return assessments;
+};
