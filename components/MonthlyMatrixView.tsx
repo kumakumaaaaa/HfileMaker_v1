@@ -49,6 +49,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
   // --- Edit Mode State ---
   const [editingDate, setEditingDate] = useState<string | null>(null);
   const [tempAssessment, setTempAssessment] = useState<DailyAssessment | null>(null);
+  const [focusedItemId, setFocusedItemId] = useState<string | null>(null);
   
   // Popover State
   const [popupState, setPopupState] = useState<{
@@ -56,6 +57,32 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
     item: NursingItemDefinition | null;
     position: { x: number; y: number };
   }>({ isOpen: false, item: null, position: { x: 0, y: 0 } });
+
+  // Helper: Get linear list of all items for navigation
+  const allItems = useMemo(() => [
+    ...itemsByCategory.a,
+    ...itemsByCategory.b,
+    ...itemsByCategory.c
+  ], [itemsByCategory]);
+
+  // Helper to calculate initial scores from item data
+  const initialDataToState = (items: Record<string, boolean | number>, feeId: string) => {
+     let a = 0, b = 0, c = 0;
+     ITEM_DEFINITIONS.forEach(def => {
+       const v = items[def.id];
+       if (def.category === 'a' && v === true) a += def.points;
+       if (def.category === 'c' && v === true) c += def.points;
+       if (def.category === 'b' && typeof v === 'number') {
+           let pts = v;
+           if (def.hasAssistance) {
+               const av = items[`${def.id}_assist`];
+               pts = pts * ((typeof av === 'number') ? av : 1);
+           }
+           b += pts;
+       }
+     });
+     return { items, scoreA: a, scoreB: b, scoreC: c };
+  }
 
   // Start Editing
   const handleStartEdit = (date: string) => {
@@ -65,17 +92,25 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
     
     // Load current data or create empty template
     const current = monthlyData[date];
-    const initialData: DailyAssessment = current ? JSON.parse(JSON.stringify(current)) : {
-       patientId,
-       date,
-       items: {},
-       scores: { a: 0, b: 0, c: 0 },
-       isSevere: false,
-       admissionFeeId: 'acute_general_5' // default
-    };
-
+    const admissionFeeId = current?.admissionFeeId || 'acute_general_5'; // default
+    const initialItems = current?.items ? { ...current.items } : {};
+    
+    // Initialize scores
+    const { items, scoreA, scoreB, scoreC } = initialDataToState(initialItems, admissionFeeId);
+    
+    setTempAssessment({
+      patientId,
+      date,
+      items,
+      admissionFeeId,
+      scores: { a: scoreA, b: scoreB, c: scoreC },
+      isSevere: evaluatePatient(admissionFeeId, { items, scoreA, scoreB, scoreC })
+    });
     setEditingDate(date);
-    setTempAssessment(initialData);
+    // Focus first item
+    if (allItems.length > 0) {
+      setFocusedItemId(allItems[0].id);
+    }
   };
 
   // Cancel Editing
@@ -83,7 +118,8 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
     if (confirm('編集中の内容を破棄しますか？')) {
       setEditingDate(null);
       setTempAssessment(null);
-      setPopupState({ ...popupState, isOpen: false });
+      setFocusedItemId(null);
+      setPopupState({ isOpen: false, item: null, position: { x: 0, y: 0 } });
     }
   };
 
@@ -99,43 +135,135 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
     
     // Force reload local
     setMonthlyData(prev => ({ ...prev, [tempAssessment.date]: tempAssessment }));
+    // If parent sync is needed later, add callback prop.
+    // setLastUpdated(Date.now());
     
     setEditingDate(null);
     setTempAssessment(null);
+    setFocusedItemId(null);
   };
 
-  // Cell Click (Open Popup)
+  // --- Keyboard & Focus Logic ---
+  
+  // Effect to sync Popup with Focused Item
+  useEffect(() => {
+      if (!editingDate || !focusedItemId) {
+          setPopupState(prev => ({ ...prev, isOpen: false }));
+          return;
+      }
+      
+      const item = ITEM_DEFINITIONS.find(i => i.id === focusedItemId);
+      if (!item) return;
+
+      // Find the cell element using data attributes
+      const cell = document.querySelector(`[data-cell-date="${editingDate}"][data-cell-item="${focusedItemId}"]`);
+      if (cell) {
+        const rect = cell.getBoundingClientRect();
+        const popupWidth = 320;
+        let x = rect.right + 10;
+        let y = rect.top + window.scrollY; 
+        if (x + popupWidth > window.innerWidth) {
+            x = rect.left - popupWidth - 10;
+        }
+        
+        setPopupState({
+            isOpen: true,
+            item,
+            position: { x, y }
+        });
+        
+        // Scroll into view if needed (smooth)
+        cell.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+  }, [focusedItemId, editingDate]);
+
+
+  // Keydown Handler
+  useEffect(() => {
+    if (!editingDate) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+        // Allow standard shortcuts (Cmd+R etc)
+        if (e.metaKey || e.ctrlKey) return;
+
+        // Navigation
+        if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === 'Tab') {
+            e.preventDefault();
+            moveFocus(1);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            moveFocus(-1);
+        } else if (['0', '1', '2'].includes(e.key)) {
+            // Numeric Input
+            // Only capture if focused item accepts this input
+            if (focusedItemId) {
+                const item = ITEM_DEFINITIONS.find(i => i.id === focusedItemId);
+                if (item) {
+                     const val = parseInt(e.key);
+                     e.preventDefault();
+                     
+                     // Validate input for item type
+                     if (item.options) {
+                         // Check if value exists in options
+                         const opt = item.options.find(o => o.value === val);
+                         if (opt) {
+                             applyValueAndAdvance(item, val);
+                             return;
+                         }
+                     } else if (item.inputType === 'checkbox') {
+                         // 1 = True, 0 = False
+                         if (val === 1) applyValueAndAdvance(item, true);
+                         if (val === 0) applyValueAndAdvance(item, false);
+                         return;
+                     }
+                }
+            }
+        }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [editingDate, focusedItemId, tempAssessment, allItems]); // Deps important
+
+  const moveFocus = (delta: number) => {
+      if (!focusedItemId) return;
+      const idx = allItems.findIndex(i => i.id === focusedItemId);
+      if (idx === -1) return;
+      
+      const newIdx = idx + delta;
+      if (newIdx >= 0 && newIdx < allItems.length) {
+          setFocusedItemId(allItems[newIdx].id);
+      }
+  };
+
+  const applyValueAndAdvance = (item: NursingItemDefinition, val: number | boolean) => {
+      // Default assist to 1 (Yes) when typing value directly (unless value is 0, which is naturally 0 pts)
+      // Actually handleValueChange takes care of logic, we just pass default assist.
+      // If user wants Assist=No (0 pts), they likely pressed '0' (which is value 0). 
+      // If item is 'Transfer', 1 = Partial. If I press '1', I mean Partial(1pt). So Assist must be 1.
+      handleValueChange(val, 1);
+      moveFocus(1);
+  }
+
+  // Cell Click (Set Focus)
   const handleCellClick = (e: React.MouseEvent, date: string, item: NursingItemDefinition) => {
     if (editingDate !== date) {
         if (date !== currentDate) onDateSelect(date);
         return;
     }
-
-    // Open popup to the RIGHT of the cell
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const popupWidth = 320;
-    
-    // Default: Right side
-    let x = rect.right + 10;
-    let y = rect.top + window.scrollY; // Align top
-
-    // If overflow right, go left
-    if (x + popupWidth > window.innerWidth) {
-        x = rect.left - popupWidth - 10;
-    }
-    
-    setPopupState({
-      isOpen: true,
-      item,
-      position: { x, y }
-    });
+    setFocusedItemId(item.id);
+    // Effect will open popup
   };
 
   // Update Value from Popup
   const handleValueChange = (val: boolean | number, assistVal?: number) => {
-    if (!tempAssessment || !popupState.item) return;
+    if (!tempAssessment || !focusedItemId) return;
     
-    const newItemId = popupState.item.id;
+    // Use focusedItemId (source of truth) instead of popupState.item
+    const newItemId = focusedItemId; 
+    const itemDef = ITEM_DEFINITIONS.find(i => i.id === newItemId);
+    if (!itemDef) return;
+
     const newItems = { ...tempAssessment.items, [newItemId]: val };
     
     // Save assistance value if provided
@@ -154,20 +282,8 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
           let points = v;
           if (def.hasAssistance) {
              const av = newItems[`${def.id}_assist`];
-             const mult = (typeof av === 'number') ? av : 0; // Default to 0 if undefined? Or maybe 1?
-             // If we just enabled assistance logic, existing data might be undefined.
-             // But if we default to 0, existing data score drops to 0. 
-             // In Popup we default to 1. Here we should probably default to 1 IF undefined, or 0?
-             // Since we default to 1 in popup, let's use 1 if undefined to avoid clearing scores of old data.
-             // Wait, earlier I said "Not performed = 0".
-             // If data is newly created, it's undefined. Popup edit sets it.
-             // Safe bet: if undefined, treat as 1 (present) to not break existing? 
-             // Or 0?
-             // Let's check initialization.
-             // If undefined, let's assume 1 (Implementation YES) for safety, usually users complain if scores drop.
-             // But strictly, if not set, maybe it's 0. 
-             // Let's use `av ?? 1`.
-             points = points * (mult ?? 1);
+             const mult = (typeof av === 'number') ? av : 1; // Default to 1 (Yes) if undefined
+             points = points * mult;
           }
           b += points;
        }
@@ -184,7 +300,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow mb-6 border border-gray-200">
+    <div className="bg-white rounded-lg shadow mb-6 border border-gray-200 inline-block min-w-full">
       <div className="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
         <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
           月間評価推移 ({year}年{month}月) 
@@ -198,7 +314,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
         <table className="w-full text-xs text-center border-collapse">
           <thead className="bg-gray-100">
             <tr>
-              <th className="p-2 border border-gray-300 min-w-[200px] text-left bg-gray-100">項目 / 日付</th>
+              <th className="p-2 border border-gray-300 min-w-[300px] text-left bg-gray-100">項目 / 日付</th>
               {dateList.map(date => {
                 const day = parseInt(date.split('-')[2]);
                 const isSelected = date === currentDate;
@@ -246,7 +362,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
             {(() => {
                 const renderRow = (item: NursingItemDefinition) => (
                    <tr key={item.id}>
-                    <td className="p-2 border border-gray-300 text-left bg-white truncate max-w-[200px]" title={item.label}>
+                    <td className="p-2 border border-gray-300 text-left bg-white truncate max-w-[300px]" title={item.label}>
                       {item.label}
                     </td>
                     {dateList.map(date => {
@@ -266,13 +382,19 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                       // Dirty check (only if editing)
                       const originalVal = isEditing ? monthlyData[date]?.items?.[item.id] : undefined;
                       const isDirty = isEditing && val !== originalVal; // Simple equality check
+                      const isFocused = isEditing && focusedItemId === item.id;
 
                       return (
                         <td 
                           key={date} 
+                          // Data attributes for locating cell for popup
+                          data-cell-date={date}
+                          data-cell-item={item.id}
                           className={`
                             border border-gray-300 relative
-                            ${isEditing ? 'cursor-pointer hover:bg-yellow-100 bg-white' : ''}
+                            ${isEditing ? 'cursor-pointer' : ''}
+                            ${isEditing && !isFocused ? 'bg-white hover:bg-yellow-50' : ''}
+                            ${isFocused ? 'bg-yellow-200 outline outline-2 outline-blue-500 z-10' : ''} 
                             ${isEditing ? 'border-yellow-400 border-x-2' : ''}
                             ${!isEditing && data?.isSevere ? 'bg-pink-50' : ''}
                           `}
