@@ -11,7 +11,9 @@ export default function Home() {
   const [selectedPatientId, setSelectedPatientId] = useState<string>('');
   const [currentDate, setCurrentDate] = useState<string>('');
   const [loadedData, setLoadedData] = useState<DailyAssessment['items'] | undefined>(undefined);
-  const [lastUpdated, setLastUpdated] = useState<number>(0); // 初期値0で安全化
+  const [sidebarWidth, setSidebarWidth] = useState(256);
+  const [isResizing, setIsResizing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<number>(0); 
   const [isMounted, setIsMounted] = useState(false);
 
   // マウント判定
@@ -45,10 +47,35 @@ export default function Home() {
       setLoadedData(undefined); // 新規
     }
   }, [selectedPatientId, currentDate, lastUpdated]); // lastUpdatedが変わった時もロードし直す
+  
+  // Resize Logic
+  useEffect(() => {
+      const handleMouseMove = (e: MouseEvent) => {
+          if (!isResizing) return;
+          const newWidth = e.clientX;
+          if (newWidth > 150 && newWidth < 600) {
+              setSidebarWidth(newWidth);
+          }
+      };
+      
+      const handleMouseUp = () => {
+          setIsResizing(false);
+          document.body.style.cursor = 'default';
+      };
+
+      if (isResizing) {
+          window.addEventListener('mousemove', handleMouseMove);
+          window.addEventListener('mouseup', handleMouseUp);
+          document.body.style.cursor = 'col-resize';
+      }
+      
+      return () => {
+          window.removeEventListener('mousemove', handleMouseMove);
+          window.removeEventListener('mouseup', handleMouseUp);
+      };
+  }, [isResizing]);
 
   const selectedPatient = patients.find(p => p.id === selectedPatientId);
-
-
 
   if (!isMounted) {
     return <div className="flex h-screen items-center justify-center bg-gray-100">Loading...</div>;
@@ -57,7 +84,19 @@ export default function Home() {
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden">
       {/* サイドバー (患者リスト) */}
-      <div className="w-64 bg-white border-r border-gray-200 flex flex-col shrink-0">
+      <div 
+        className="bg-white border-r border-gray-200 flex flex-col shrink-0 relative group"
+        style={{ width: sidebarWidth }}
+      >
+        {/* Resize Handle */}
+        <div 
+            className="absolute right-0 top-0 h-full w-4 cursor-col-resize z-50 flex flex-col justify-start pt-32 items-center -mr-2 select-none"
+            onMouseDown={(e) => { e.preventDefault(); setIsResizing(true); }}
+        >
+             {/* Hit Area & Visual */}
+             <div className="w-1.5 h-16 bg-gray-300 rounded-full transition-colors hover:bg-gray-500 shadow-sm" />
+        </div>
+
         <div className="p-4 border-b border-gray-200 bg-blue-50">
           <h1 className="text-lg font-bold text-blue-800 flex items-center gap-2">
             <User className="w-5 h-5" /> 患者一覧

@@ -45,6 +45,13 @@ export const saveAssessment = (assessment: DailyAssessment) => {
   localStorage.setItem(key, JSON.stringify(assessment));
 };
 
+// 評価データ削除
+export const deleteAssessment = (patientId: string, date: string) => {
+  if (typeof window === 'undefined') return;
+  const key = getAssessmentKey(patientId, date);
+  localStorage.removeItem(key);
+};
+
 // 評価データ取得
 export const getAssessment = (patientId: string, date: string): DailyAssessment | null => {
   if (typeof window === 'undefined') return null;
