@@ -16,13 +16,15 @@ interface MonthlyMatrixViewProps {
   currentDate: string; // YYYY-MM-DD
   onDateSelect: (date: string) => void;
   lastUpdated?: number;
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 
 export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({ 
   patientId, 
   currentDate, 
   onDateSelect,
-  lastUpdated 
+  lastUpdated,
+  onDirtyChange
 }) => {
   // --- Basic Data Loading ---
   const targetDateObj = new Date(currentDate);
@@ -55,6 +57,39 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
   const [pendingChanges, setPendingChanges] = useState<Record<string, DailyAssessment>>({});
   const [focusedItemId, setFocusedItemId] = useState<string | null>(null);
   
+  // --- Dirty State & Patient Change Handling ---
+  const isDirty = Object.keys(pendingChanges).length > 0 || !!editingDate;
+
+  // Notify parent of dirty state
+  useEffect(() => {
+      onDirtyChange?.(isDirty);
+      
+      // Browser unload protection
+      const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+          if (isDirty) {
+              e.preventDefault();
+              e.returnValue = '';
+          }
+      };
+      
+      if (isDirty) {
+          window.addEventListener('beforeunload', handleBeforeUnload);
+      }
+      
+      return () => {
+          window.removeEventListener('beforeunload', handleBeforeUnload);
+      };
+  }, [isDirty, onDirtyChange]);
+
+  // Reset editing on patient change
+  useEffect(() => {
+      setEditingDate(null);
+      setPendingChanges({});
+      setFocusedItemId(null);
+      // We don't need to call onDirtyChange(false) here because the dependency above will trigger
+      // but if we unmount we might want to ensure it's cleared.
+  }, [patientId]);
+
   // Popover State
   const [popupState, setPopupState] = useState<{
     isOpen: boolean;
@@ -375,25 +410,29 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow mb-6 border border-gray-200 inline-block min-w-full">
+    <div className="flex flex-col bg-white rounded-lg shadow mb-6 border border-gray-200 w-full overflow-hidden">
       <div className="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
         <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
           月間評価推移 ({year}年{month}月) 
-          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">New</span>
-          {editingDate && <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded flex items-center gap-1"><Edit2 className="w-3 h-3"/> 編集中: {editingDate} (他 {Object.keys(pendingChanges).length - 1}件 の変更保留)</span>}
+          {editingDate && <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded flex items-center gap-1"><Edit2 className="w-3 h-3"/> 編集中: {editingDate}</span>}
         </h2>
       </div>
       
-      {/* Removed scroll and sticky, just auto layout */}
-      <div className="w-full"> 
-        <table className="w-full text-xs text-center border-collapse">
+      {/* Scrollable Container */}
+      <div className="w-full overflow-x-auto max-h-[80vh]"> 
+        <table className="w-full text-xs text-center border-separate border-spacing-0">
           <thead className="bg-gray-100">
             <tr>
-              <th className="p-2 border border-gray-300 min-w-[300px] text-left bg-gray-100">項目 / 日付</th>
+              <th className="p-2 border border-gray-300 min-w-[200px] text-left bg-gray-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] outline outline-1 outline-gray-300" 
+                  style={{ position: 'sticky', top: 0, left: 0, zIndex: 60, background: '#f3f4f6' }}>項目 / 日付</th>
               {dateList.map((date, dateIdx) => {
                 const day = parseInt(date.split('-')[2]);
                 const isSelected = date === currentDate;
                 const isEditing = date === editingDate;
+                
+                // Future check
+                const todayStr = new Date().toISOString().split('T')[0];
+                const isFuture = date > todayStr;
                 
                 // Data flow: pending -> stored
                 const pending = pendingChanges[date];
@@ -409,12 +448,14 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                       p-2 border border-gray-300 min-w-[60px] transition-colors relative group
                       ${isEditing ? 'bg-yellow-50 border-yellow-400 border-2 border-b-0' : ''}
                       ${!isEditing && isSelected ? 'bg-blue-600 text-white' : ''}
-                      ${!isEditing && !isSelected ? 'hover:bg-gray-200' : ''}
+                      ${!isEditing && !isSelected ? 'bg-gray-100 hover:bg-gray-200' : ''}
                       ${!isEditing && isSevere ? 'bg-pink-100 text-red-800' : ''}
+                      ${isFuture ? 'bg-gray-50 cursor-not-allowed' : ''}
                     `}
-                    onClick={() => !isEditing && onDateSelect(date)}
+                    style={{ position: 'sticky', top: 0, zIndex: 50 }}
+                    onClick={() => !isEditing && !isFuture && onDateSelect(date)}
                   >
-                    <div className="flex flex-col items-center gap-1">
+                    <div className={`flex flex-col items-center gap-1 ${isFuture ? 'opacity-50' : ''}`}>
                       <span>{day}</span>
                       {isEditing ? (
                          <div className="flex gap-1 z-50 relative items-center"> 
@@ -423,8 +464,8 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                          </div>
                       ) : (
                         <div className="h-5 flex gap-1 items-center justify-center">
-                             {/* Copy Previous Button - Only if NO data for current date */}
-                             {dateIdx > 0 && !monthlyData[date] && (
+                             {/* Copy Previous Button - Only if NO data for current date AND not future */}
+                             {dateIdx > 0 && !monthlyData[date] && !isFuture && (
                                 <button
                                     onClick={(e) => { e.stopPropagation(); handleCopyPrevious(date); }}
                                     className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
@@ -434,13 +475,15 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                                 </button>
                              )}
                              {/* Edit Button */}
-                             <button 
-                                onClick={(e) => { e.stopPropagation(); handleStartEdit(date); }}
-                                className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
-                                title="編集"
-                             >
-                                <Edit2 className="w-3 h-3" />
-                             </button>
+                             {!isFuture && (
+                                 <button 
+                                    onClick={(e) => { e.stopPropagation(); handleStartEdit(date); }}
+                                    className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                                    title="編集"
+                                 >
+                                    <Edit2 className="w-3 h-3" />
+                                 </button>
+                             )}
                         </div>
                       )}
                       
@@ -457,10 +500,12 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
             {(() => {
                 const renderRow = (item: NursingItemDefinition) => (
                    <tr key={item.id}>
-                    <td className="p-2 border border-gray-300 text-left bg-white truncate max-w-[300px]" title={item.label}>
+                    <td className="p-2 border border-gray-300 text-left bg-white truncate max-w-[200px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] outline outline-1 outline-gray-300" title={item.label} 
+                        style={{ position: 'sticky', left: 0, zIndex: 40, background: 'white' }}>
                       {item.label}
                     </td>
                     {dateList.map((date, dateIdx) => {
+                      // ... (existing logic)
                       const isEditing = date === editingDate;
                       
                       // Data
@@ -515,7 +560,8 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                 // Helper for score rows
                 const renderScoreRow = (label: string, category: 'a'|'b'|'c', bgClass: string) => (
                     <tr className={`${bgClass} font-bold`}>
-                        <td className={`${bgClass} p-2 border`}>{label}</td>
+                        <td className={`${bgClass} p-2 border shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]`} 
+                            style={{ position: 'sticky', left: 0, zIndex: 40 }}>{label}</td>
                         {dateList.map((date, dateIdx) => {
                              const pending = pendingChanges[date];
                              const stored = monthlyData[date];
@@ -547,7 +593,8 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
 
             {/* 判定結果 */}
             <tr className="bg-gray-800 text-white font-bold">
-              <td className="p-2 border border-gray-600 text-left bg-gray-800">判定結果</td>
+              <td className="p-2 border border-gray-600 text-left bg-gray-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] outline outline-1 outline-gray-600" 
+                  style={{ position: 'sticky', left: 0, zIndex: 40, background: '#1f2937', color: 'white' }}>判定結果</td>
               {dateList.map((date, dateIdx) => {
                 const pending = pendingChanges[date];
                  const stored = monthlyData[date];

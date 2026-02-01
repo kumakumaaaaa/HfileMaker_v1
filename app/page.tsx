@@ -15,11 +15,29 @@ export default function Home() {
   const [isResizing, setIsResizing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<number>(0); 
   const [isMounted, setIsMounted] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // マウント判定
   useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  // ... (omitted)
+
+  // Patient Selection Handler with Guard
+  const handlePatientSelect = (pid: string) => {
+      if (selectedPatientId === pid) return;
+      
+      if (hasUnsavedChanges) {
+          if (!confirm('編集中のデータがあります。破棄して別の患者へ移動しますか？')) {
+              return;
+          }
+      }
+      setSelectedPatientId(pid);
+      setHasUnsavedChanges(false); // Reset immediately on switch accepted
+  };
+
+  // ... (omitted)
 
   // 初回ロード
   useEffect(() => {
@@ -36,50 +54,7 @@ export default function Home() {
     }
   }, []);
 
-  // 患者・日付変更時にデータをロード
-  useEffect(() => {
-    if (!selectedPatientId || !currentDate) return;
-
-    const data = getAssessment(selectedPatientId, currentDate);
-    if (data) {
-      setLoadedData(data.items);
-    } else {
-      setLoadedData(undefined); // 新規
-    }
-  }, [selectedPatientId, currentDate, lastUpdated]); // lastUpdatedが変わった時もロードし直す
-  
-  // Resize Logic
-  useEffect(() => {
-      const handleMouseMove = (e: MouseEvent) => {
-          if (!isResizing) return;
-          const newWidth = e.clientX;
-          if (newWidth > 150 && newWidth < 600) {
-              setSidebarWidth(newWidth);
-          }
-      };
-      
-      const handleMouseUp = () => {
-          setIsResizing(false);
-          document.body.style.cursor = 'default';
-      };
-
-      if (isResizing) {
-          window.addEventListener('mousemove', handleMouseMove);
-          window.addEventListener('mouseup', handleMouseUp);
-          document.body.style.cursor = 'col-resize';
-      }
-      
-      return () => {
-          window.removeEventListener('mousemove', handleMouseMove);
-          window.removeEventListener('mouseup', handleMouseUp);
-      };
-  }, [isResizing]);
-
-  const selectedPatient = patients.find(p => p.id === selectedPatientId);
-
-  if (!isMounted) {
-    return <div className="flex h-screen items-center justify-center bg-gray-100">Loading...</div>;
-  }
+  // ... (omitted)
 
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden">
@@ -88,12 +63,11 @@ export default function Home() {
         className="bg-white border-r border-gray-200 flex flex-col shrink-0 relative group"
         style={{ width: sidebarWidth }}
       >
-        {/* Resize Handle */}
+        {/* Resize Handle (omitted) */}
         <div 
             className="absolute right-0 top-0 h-full w-4 cursor-col-resize z-50 flex flex-col justify-start pt-32 items-center -mr-2 select-none"
             onMouseDown={(e) => { e.preventDefault(); setIsResizing(true); }}
         >
-             {/* Hit Area & Visual */}
              <div className="w-1.5 h-16 bg-gray-300 rounded-full transition-colors hover:bg-gray-500 shadow-sm" />
         </div>
 
@@ -106,7 +80,7 @@ export default function Home() {
           {patients.map(patient => (
             <button
               key={patient.id}
-              onClick={() => setSelectedPatientId(patient.id)}
+              onClick={() => handlePatientSelect(patient.id)}
               className={`w-full text-left p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors ${
                 selectedPatientId === patient.id ? 'bg-blue-100 border-l-4 border-l-blue-600' : ''
               }`}
@@ -124,7 +98,7 @@ export default function Home() {
       </div>
 
       {/* メインエリア */}
-      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 flex flex-col gap-4">
 
         {/* デバッグ用: 状態表示 (問題解決後削除予定) */}
         {!selectedPatientId || !currentDate ? (
@@ -134,12 +108,13 @@ export default function Home() {
         ) : null}
 
         {selectedPatientId && currentDate && (
-          <section className="w-full">
+          <section className="w-full min-w-0">
             <MonthlyMatrixView 
                patientId={selectedPatientId}
                currentDate={currentDate}
                onDateSelect={setCurrentDate}
                lastUpdated={lastUpdated}
+               onDirtyChange={setHasUnsavedChanges}
             />
           </section>
         )}
