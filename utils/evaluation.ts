@@ -35,11 +35,9 @@ export function evaluatePatient(admissionFeeId: string, assessment: NursingAsses
         let points = value;
 
         // 介助実施の概念がある項目は、介助フラグ(1 or 0)を掛け合わせる
-        // items[def.id + '_assist'] に 1(あり) か 0(なし) が入っている想定
         if (def.hasAssistance) {
            const assistValue = items[`${def.id}_assist`];
-           // undefinedの場合は0(なし)扱い、あるいはデフォルトロジックによるが、
-           // 「実施なし」なら0点とするため、assistValueが1でなければ0にする
+           // 介助実施(1)でなければ0点になる
            const multiplier = (typeof assistValue === 'number') ? assistValue : 0;
            points = points * multiplier;
         }

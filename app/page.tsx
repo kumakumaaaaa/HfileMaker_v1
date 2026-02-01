@@ -1,9 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { NursingAssessmentForm } from '../components/NursingAssessmentForm';
 import { MonthlyMatrixView } from '../components/MonthlyMatrixView';
-import { initializeStorage, getPatients, getAssessment, saveAssessment, getPreviousDayAssessment } from '../utils/storage';
+import { initializeStorage, getPatients, getAssessment } from '../utils/storage';
 import { Patient, DailyAssessment } from '../types/nursing';
 import { User } from 'lucide-react';
 
@@ -49,35 +48,7 @@ export default function Home() {
 
   const selectedPatient = patients.find(p => p.id === selectedPatientId);
 
-  const handleSave = (items: Record<string, boolean | number>, scores: { a: number, b: number, c: number }, isSevere: boolean) => {
-    if (!selectedPatientId || !currentDate) {
-      alert('患者または日付が選択されていません');
-      return;
-    }
 
-    const assessment: DailyAssessment = {
-      patientId: selectedPatientId,
-      date: currentDate,
-      items,
-      admissionFeeId: 'acute_general_5',
-      scores,
-      isSevere
-    };
-    saveAssessment(assessment);
-    setLastUpdated(Date.now()); // 更新通知 (マトリックスも再描画される)
-  };
-
-  const handleCopyPrevious = () => {
-    if (!selectedPatientId || !currentDate) return;
-    const prevData = getPreviousDayAssessment(selectedPatientId, currentDate);
-    if (prevData) {
-      if (confirm(`${prevData.date} のデータをコピーしますか？`)) {
-        setLoadedData(prevData.items);
-      }
-    } else {
-      alert('前日のデータが見つかりませんでした');
-    }
-  };
 
   if (!isMounted) {
     return <div className="flex h-screen items-center justify-center bg-gray-100">Loading...</div>;
@@ -124,25 +95,15 @@ export default function Home() {
         ) : null}
 
         {selectedPatientId && currentDate && (
-          <div className="border border-green-300 rounded p-1"> {/* 領域確認用ボーダー */}
-             <MonthlyMatrixView 
-                patientId={selectedPatientId}
-                currentDate={currentDate}
-                onDateSelect={setCurrentDate}
-                lastUpdated={lastUpdated}
-             />
-          </div>
+          <section className="w-full">
+            <MonthlyMatrixView 
+               patientId={selectedPatientId}
+               currentDate={currentDate}
+               onDateSelect={setCurrentDate}
+               lastUpdated={lastUpdated}
+            />
+          </section>
         )}
-
-        <NursingAssessmentForm 
-          key={`${selectedPatientId}-${currentDate}`}
-          patientName={selectedPatient?.name}
-          currentDate={currentDate}
-          onDateChange={setCurrentDate}
-          initialData={loadedData}
-          onSave={handleSave}
-          onCopyPrevious={handleCopyPrevious}
-        />
       </div>
     </div>
   );

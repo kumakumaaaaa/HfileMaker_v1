@@ -10,7 +10,7 @@ export interface NursingItemDefinition {
   points: number; // A/C項目の点数、あるいはB項目の最大点数等の参考値
   description?: string;
   inputType: 'checkbox' | 'radio' | 'select'; // 入力UIタイプ
-  options?: { label: string; value: number }[]; // 選択肢がある場合 (B項目など)
+  options?: { label: string; value: number; explanation?: string }[]; // 選択肢がある場合 (B項目など)
   hasAssistance?: boolean; // B項目: 介助の実施有無を掛け合わせるか
 }
 
@@ -31,9 +31,9 @@ export const ITEM_DEFINITIONS: NursingItemDefinition[] = [
     id: 'b_bed_mobility', category: 'b', label: '寝返り', points: 2, inputType: 'select', 
     hasAssistance: false,
     options: [
-      { label: 'できる(0点)', value: 0 },
-      { label: '何かにつかまればできる(1点)', value: 1 },
-      { label: 'できない(2点)', value: 2 }
+      { label: 'できる(0点)', value: 0, explanation: '手すり等を使わずに自力で寝返りができる' },
+      { label: '何かにつかまればできる(1点)', value: 1, explanation: '柵や介助バーを使用すれば可能' },
+      { label: 'できない(2点)', value: 2, explanation: '自力では全くできない、または医学的安静で禁止されている' }
     ]
   },
   // 移乗: 介助実施との掛け算
@@ -41,9 +41,9 @@ export const ITEM_DEFINITIONS: NursingItemDefinition[] = [
     id: 'b_transfer', category: 'b', label: '移乗', points: 2, inputType: 'select',
     hasAssistance: true,
     options: [
-      { label: '自立(0点)', value: 0 },
-      { label: '一部介助(1点)', value: 1 },
-      { label: '全介助(2点)', value: 2 }
+      { label: '自立(0点)', value: 0, explanation: '乗り移り動作が自力で可能、または介助不要' },
+      { label: '一部介助(1点)', value: 1, explanation: '見守りや手を添える程度の介助が必要' },
+      { label: '全介助(2点)', value: 2, explanation: '抱え上げなど、人的な力が全面的に必要' }
     ]
   },
   // 口腔清潔: 介助実施との掛け算 (0, 1点のみ)
@@ -51,8 +51,8 @@ export const ITEM_DEFINITIONS: NursingItemDefinition[] = [
     id: 'b_oral_care', category: 'b', label: '口腔清潔', points: 1, inputType: 'select',
     hasAssistance: true,
     options: [
-      { label: '自立(0点)', value: 0 },
-      { label: '要介助(1点)', value: 1 }
+      { label: '自立(0点)', value: 0, explanation: '準備から実施まで一人で完結できる' },
+      { label: '要介助(1点)', value: 1, explanation: '物品の準備や仕上げ磨きなどに介助が必要' }
     ]
   },
   // 食事摂取: 介助実施との掛け算
@@ -60,9 +60,9 @@ export const ITEM_DEFINITIONS: NursingItemDefinition[] = [
     id: 'b_eating', category: 'b', label: '食事摂取', points: 2, inputType: 'select',
     hasAssistance: true,
     options: [
-      { label: '自立(0点)', value: 0 },
-      { label: '一部介助(1点)', value: 1 },
-      { label: '全介助(2点)', value: 2 }
+      { label: '自立(0点)', value: 0, explanation: '配膳された食事を自力で摂取できる' },
+      { label: '一部介助(1点)', value: 1, explanation: '小さく刻む、蓋を開ける、一部介助などが必要' },
+      { label: '全介助(2点)', value: 2, explanation: '経管栄養を含む、全ての摂取に介助が必要' }
     ]
   },
   // 衣服の着脱: 介助実施との掛け算
@@ -70,9 +70,9 @@ export const ITEM_DEFINITIONS: NursingItemDefinition[] = [
     id: 'b_clothes', category: 'b', label: '衣服の着脱', points: 2, inputType: 'select',
     hasAssistance: true,
     options: [
-      { label: '自立(0点)', value: 0 },
-      { label: '一部介助(1点)', value: 1 },
-      { label: '全介助(2点)', value: 2 }
+      { label: '自立(0点)', value: 0, explanation: 'ボタン留め等含め、全て一人で可能' },
+      { label: '一部介助(1点)', value: 1, explanation: '背中を整える、靴下を履くなどに介助が必要' },
+      { label: '全介助(2点)', value: 2, explanation: '自分では着脱がほとんどできない' }
     ]
   },
   // 指示が通じる: 介助有無なし
