@@ -1,17 +1,65 @@
 import { Patient, Admission, DailyAssessment } from '../types/nursing';
 
-
-const STORAGE_KEY_PATIENTS = 'nursing_patients_v3';
-const STORAGE_KEY_ADMISSIONS = 'nursing_admissions_v3'; // New
+const STORAGE_KEY_PATIENTS = 'nursing_patients_v5';
+const STORAGE_KEY_ADMISSIONS = 'nursing_admissions_v5';
 const STORAGE_KEY_ASSESSMENTS_PREFIX = 'nursing_assessment_';
+
+// --- CRUD Operations ---
+
+// Save or Update Patient
+export const savePatient = (patient: Patient) => {
+    // Generate ID if missing (simple random for prototype)
+    if (!patient.id) {
+        patient.id = 'p' + Math.random().toString(36).substr(2, 9);
+    }
+
+    const patients = getPatients();
+    const existingIndex = patients.findIndex(p => p.id === patient.id);
+    
+    let updatedPatients;
+    if (existingIndex >= 0) {
+        updatedPatients = [...patients];
+        updatedPatients[existingIndex] = patient;
+    } else {
+        updatedPatients = [...patients, patient];
+    }
+    
+    // Save
+    if (typeof window !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY_PATIENTS, JSON.stringify(updatedPatients));
+    }
+    return patient;
+};
+
+// Save Admissions (Replace all for patient)
+export const saveAdmissions = (patientId: string, admissions: Admission[]) => {
+    const allAdmissions = getAdmissions(null); // Get ALL admissions
+    
+    // Remove existing for this patient
+    const otherAdmissions = allAdmissions.filter(a => a.patientId !== patientId);
+    
+    // Clean up new admissions (ensure IDs and patientId)
+    const newAdmissions = admissions.map(a => ({
+        ...a,
+        id: a.id.startsWith('temp_') ? 'adm' + Math.random().toString(36).substr(2, 9) : a.id,
+        patientId: patientId
+    }));
+    
+    const combined = [...otherAdmissions, ...newAdmissions];
+    
+    if (typeof window !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY_ADMISSIONS, JSON.stringify(combined));
+    }
+};
 
 // ダミーデータ生成 (Patients + Admissions)
 const generateDummyData = (): { patients: Patient[], admissions: Admission[] } => {
+
   const patients: Patient[] = [];
   const admissions: Admission[] = [];
 
   // Helper to add patient & admission
-  const add = (id: string, name: string, gender: '1'|'2', birth: string, admDate: string, room: string, isDischarged: boolean = false, extraHistory: boolean = false) => {
+  const add = (id: string, name: string, gender: '1'|'2', birth: string, admDate: string, room: string, isDischarged: boolean = false, extraHistory: boolean = false, isExcluded: boolean = false) => {
       const pid = `p${id}`;
       patients.push({
           id: pid,
@@ -21,7 +69,8 @@ const generateDummyData = (): { patients: Patient[], admissions: Admission[] } =
           birthDate: birth,
           postalCode: '100-0001',
           address: '東京都千代田区千代田1-1',
-          memo: extraHistory ? '入退院を繰り返しています' : (isDischarged ? '退院済み' : '特記事項なし')
+          memo: extraHistory ? '入退院を繰り返しています' : (isDischarged ? '退院済み' : ''),
+          excludeFromAssessment: isExcluded
       });
 
       // If extra history, add a past admission
@@ -64,11 +113,12 @@ const generateDummyData = (): { patients: Patient[], admissions: Admission[] } =
       const ward = wards[i % 3];
       const room = `${(i % 5) + 1}0${(i % 10)}`;
 
-      // Logic for discharged and multiple admissions
-      const isDischarged = i % 5 === 0; // Every 5th patient is discharged
-      const hasHistory = i % 7 === 0;   // Every 7th patient has past history
+      // Logic for discharged, multiple admissions, and excluded
+      const isDischarged = i % 5 === 0; // Every 5th
+      const hasHistory = i % 7 === 0;   // Every 7th
+      const isExcluded = i % 8 === 0;   // Every 8th is excluded
 
-      add(num, `ダミー 患者${i}`, isFemale ? '2' : '1', birthDate, admDate, room, isDischarged, hasHistory);
+      add(num, `ダミー 患者${i}`, isFemale ? '2' : '1', birthDate, admDate, room, isDischarged, hasHistory, isExcluded);
       
       // Update ward for the latest admission
       if (admissions.length > 0) {
@@ -101,25 +151,13 @@ export const getPatients = (): Patient[] => {
   return stored ? JSON.parse(stored) : [];
 };
 
-// 患者保存 (新規・更新)
-export const savePatient = (patient: Patient) => {
-  if (typeof window === 'undefined') return;
-  const patients = getPatients();
-  const index = patients.findIndex(p => p.id === patient.id);
-  
-  if (index >= 0) {
-    patients[index] = patient;
-  } else {
-    patients.push(patient);
-  }
-  localStorage.setItem(STORAGE_KEY_PATIENTS, JSON.stringify(patients));
-};
-
-// 入院歴取得
-export const getAdmissions = (patientId: string): Admission[] => {
+// 入院歴取得 (nullの場合は全件)
+export const getAdmissions = (patientId: string | null): Admission[] => {
   if (typeof window === 'undefined') return [];
   const stored = localStorage.getItem(STORAGE_KEY_ADMISSIONS);
   const admissions: Admission[] = stored ? JSON.parse(stored) : [];
+  
+  if (patientId === null) return admissions;
   return admissions.filter(a => a.patientId === patientId);
 };
 

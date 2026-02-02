@@ -1,12 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Users, Search, Plus, ChevronLeft, ChevronRight, Edit, Calendar, FileText } from 'lucide-react';
+import { Users, Search, Plus, ChevronLeft, ChevronRight, Edit, Calendar, FileText, Flag } from 'lucide-react';
 import { Patient, Admission } from '../types/nursing';
-import { getPatients, getAdmissions } from '../utils/storage';
+import { getPatients, getAdmissions, savePatient, saveAdmissions } from '../utils/storage';
 import { PatientDetailScreen } from './PatientDetailScreen';
+import { PatientEditForm } from './PatientEditForm';
 
 const PAGE_SIZE = 20;
 
-export const PatientManagementScreen: React.FC = () => {
+interface PatientManagementScreenProps {
+  onEditingChange?: (isEditing: boolean) => void;
+}
+
+export const PatientManagementScreen: React.FC<PatientManagementScreenProps> = ({ onEditingChange }) => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [admissionsMap, setAdmissionsMap] = useState<Record<string, Admission[]>>({});
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
@@ -16,7 +21,17 @@ export const PatientManagementScreen: React.FC = () => {
   const [filterBirthDate, setFilterBirthDate] = useState('');
   const [filterPeriodStart, setFilterPeriodStart] = useState('');
   const [filterPeriodEnd, setFilterPeriodEnd] = useState('');
+  const [filterExcludedOnly, setFilterExcludedOnly] = useState(false);
   
+  // Create / Edit State
+  const [isCreating, setIsCreating] = useState(false); 
+  const [creatingPatient, setCreatingPatient] = useState<Patient | null>(null);
+
+  // Notify parent of editing state
+  useEffect(() => {
+      onEditingChange?.(isCreating);
+  }, [isCreating, onEditingChange]);
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -57,17 +72,80 @@ export const PatientManagementScreen: React.FC = () => {
           });
           if (!hasOverlap) return false;
       }
+      
+      // 4. Excluded Only Filter
+      if (filterExcludedOnly && !p.excludeFromAssessment) return false;
 
       return true;
     }).sort((a, b) => b.id.localeCompare(a.id)); 
-  }, [patients, filterName, filterBirthDate, filterPeriodStart, filterPeriodEnd, admissionsMap]);
-
+  }, [patients, filterName, filterBirthDate, filterPeriodStart, filterPeriodEnd, filterExcludedOnly, admissionsMap]);
+  
   // Pagination Logic
   const totalPages = Math.ceil(filteredPatients.length / PAGE_SIZE);
-  const currentPatients = filteredPatients.slice(
-      (currentPage - 1) * PAGE_SIZE,
-      currentPage * PAGE_SIZE
-  );
+  
+  const currentPatients = useMemo(() => {
+    const firstPageIndex = (currentPage - 1) * PAGE_SIZE;
+    const lastPageIndex = firstPageIndex + PAGE_SIZE;
+    return filteredPatients.slice(firstPageIndex, lastPageIndex);
+  }, [currentPage, filteredPatients]);
+  
+  // Helper to reset pagination when filter changes
+  const handleFilterChange = (setter: React.Dispatch<React.SetStateAction<any>>, value: any) => {
+      setter(value);
+      setCurrentPage(1);
+  };
+
+  // Create Handler
+  const handleCreateStart = () => {
+      const allPatients = getPatients();
+      let maxId = 0;
+      allPatients.forEach(p => {
+          const num = parseInt(p.identifier, 10);
+          if (!isNaN(num) && num > maxId) maxId = num;
+      });
+      const nextId = String(maxId + 1).padStart(5, '0'); // Assuming 5 digit ID like 10001
+      
+      const newDummyPatient: Patient = {
+          id: '', // Will be generated on save
+          identifier: nextId,
+          name: '',
+          gender: '1', // Default
+          birthDate: '',
+          postalCode: '',
+          address: '',
+          memo: '',
+          excludeFromAssessment: false
+      };
+      
+      setCreatingPatient(newDummyPatient);
+      setIsCreating(true);
+  };
+
+  const handleCreateSave = (newPatient: Patient, newAdmissions: Admission[]) => {
+      savePatient(newPatient);
+      saveAdmissions(newPatient.id, newAdmissions);
+      
+      // Refresh Data
+      setPatients(getPatients());
+      const admMap: Record<string, Admission[]> = {};
+      getPatients().forEach(p => {
+            admMap[p.id] = getAdmissions(p.id);
+      });
+      setAdmissionsMap(admMap);
+      
+      setIsCreating(false);
+      setCreatingPatient(null);
+  };
+
+  if (isCreating && creatingPatient) {
+      return (
+          <PatientEditForm 
+              initialPatient={creatingPatient}
+              onSave={handleCreateSave}
+              onCancel={() => { setIsCreating(false); setCreatingPatient(null); }}
+          />
+      );
+  }
 
   // Detail View Rendering
   if (selectedPatient) {
@@ -75,26 +153,33 @@ export const PatientManagementScreen: React.FC = () => {
           <PatientDetailScreen 
               patient={selectedPatient}
               admissions={admissionsMap[selectedPatient.id] || []}
+              onEditingChange={onEditingChange}
               onBack={() => setSelectedPatient(null)}
+              onUpdate={() => {
+                  // Refresh data when returning from detail (in case of edits there)
+                  setPatients(getPatients());
+                   const admMap: Record<string, Admission[]> = {};
+                    getPatients().forEach(p => {
+                        admMap[p.id] = getAdmissions(p.id);
+                    });
+                    setAdmissionsMap(admMap);
+              }}
           />
       );
   }
 
-  // Helper to reset pagination when filter changes
-  const handleFilterChange = (setter: React.Dispatch<React.SetStateAction<string>>, value: string) => {
-      setter(value);
-      setCurrentPage(1);
-  };
-
   return (
-    <div className="flex flex-col h-full bg-gray-50 text-lg"> {/* Increased to text-lg */}
+    <div className="flex flex-col h-full bg-gray-50 text-lg">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center shrink-0">
         <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
             <Users className="w-8 h-8 text-blue-600" />
             患者管理
         </h2>
-        <button className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 shadow-sm transition-colors flex items-center gap-2 font-bold text-lg">
+        <button 
+            onClick={handleCreateStart}
+            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 shadow-sm transition-colors flex items-center gap-2 font-bold text-lg"
+        >
             <Plus className="w-5 h-5" /> 新規患者登録
         </button>
       </div>
@@ -149,6 +234,19 @@ export const PatientManagementScreen: React.FC = () => {
                 />
             </div>
         </div>
+
+        {/* Excluded Only Filter */}
+        <div className="pb-3 pl-4">
+             <label className="flex items-center gap-2 cursor-pointer">
+                 <input 
+                     type="checkbox"
+                     className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
+                     checked={filterExcludedOnly}
+                     onChange={(e) => handleFilterChange(setFilterExcludedOnly, e.target.checked)}
+                 />
+                 <span className="text-lg font-bold text-gray-700">評価対象外のみ</span>
+             </label>
+        </div>
       </div>
 
       {/* Main Content: Table */}
@@ -157,13 +255,13 @@ export const PatientManagementScreen: React.FC = () => {
              <table className="w-full text-left">
                  <thead className="bg-gray-50 text-gray-600 font-bold border-b border-gray-200 text-lg">
                      <tr>
-                         <th className="px-6 py-4 whitespace-nowrap">患者ID</th>
-                         <th className="px-6 py-4 whitespace-nowrap">氏名</th>
-                         <th className="px-6 py-4 whitespace-nowrap">性別</th>
-                         <th className="px-6 py-4 whitespace-nowrap">生年月日</th>
-                         <th className="px-6 py-4 whitespace-nowrap">メモ</th>
+                         <th className="px-6 py-4 whitespace-nowrap text-center">患者ID</th>
+                         <th className="px-6 py-4 whitespace-nowrap text-center">氏名</th>
+                         <th className="px-6 py-4 whitespace-nowrap text-center">性別</th>
+                         <th className="px-6 py-4 whitespace-nowrap text-center">生年月日</th>
+                         <th className="px-6 py-4 whitespace-nowrap text-center">対象外</th>
+                         <th className="px-6 py-4 whitespace-nowrap text-center">メモ</th>
                          <th className="px-6 py-4 min-w-[300px]">最新の入院歴</th>
-                         <th className="px-6 py-4 text-right">操作</th>
                      </tr>
                  </thead>
                  <tbody className="divide-y divide-gray-100">
@@ -179,17 +277,24 @@ export const PatientManagementScreen: React.FC = () => {
                             <tr 
                                 key={patient.id} 
                                 onClick={() => setSelectedPatient(patient)}
-                                className="hover:bg-blue-50 transition-colors cursor-pointer group text-xl" // Increased to text-xl
+                                className="hover:bg-blue-50 transition-colors cursor-pointer group text-xl" 
                             >
-                                <td className="px-6 py-4 font-mono text-gray-600">{patient.identifier}</td>
-                                <td className="px-6 py-4 font-bold text-gray-800">{patient.name}</td>
-                                <td className="px-6 py-4 text-gray-600">
+                                <td className="px-6 py-4 font-mono text-gray-600 text-center">{patient.identifier}</td>
+                                <td className="px-6 py-4 font-bold text-gray-800 text-center">{patient.name}</td>
+                                <td className="px-6 py-4 text-gray-600 text-center">
                                     {patient.gender === '1' ? '男性' : (patient.gender === '2' ? '女性' : 'その他')}
                                 </td>
-                                <td className="px-6 py-4 text-gray-600 font-mono">
+                                <td className="px-6 py-4 text-gray-600 font-mono text-center">
                                     {patient.birthDate}
                                 </td>
-                                <td className="px-6 py-4 text-gray-500 text-lg max-w-xs truncate">
+                                <td className="px-6 py-4 text-center">
+                                    {patient.excludeFromAssessment && (
+                                        <div className="flex justify-center">
+                                            <Flag className="w-6 h-6 text-red-500 fill-red-100" />
+                                        </div>
+                                    )}
+                                </td>
+                                <td className="px-6 py-4 text-gray-500 text-lg max-w-xs truncate text-center">
                                     {patient.memo || '-'}
                                 </td>
                                 <td className="px-6 py-4">
@@ -201,11 +306,6 @@ export const PatientManagementScreen: React.FC = () => {
                                             病棟: {wardStr}
                                         </div>
                                     </div>
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    <button className="text-blue-600 hover:text-blue-800 p-3 rounded-full hover:bg-blue-100 opacity-0 group-hover:opacity-100 transition-all">
-                                        <Edit className="w-6 h-6" />
-                                    </button>
                                 </td>
                             </tr>
                         );
