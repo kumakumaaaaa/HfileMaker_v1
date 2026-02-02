@@ -607,17 +607,11 @@ video {
 .min-w-0 {
   min-width: 0px;
 }
-.min-w-\[200px\] {
-  min-width: 200px;
-}
-.min-w-\[60px\] {
-  min-width: 60px;
-}
 .min-w-\[300px\] {
   min-width: 300px;
 }
-.max-w-\[200px\] {
-  max-width: 200px;
+.min-w-\[60px\] {
+  min-width: 60px;
 }
 .max-w-\[300px\] {
   max-width: 300px;

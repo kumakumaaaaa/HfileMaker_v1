@@ -431,7 +431,8 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                 const isEditing = date === editingDate;
                 
                 // Future check
-                const todayStr = new Date().toISOString().split('T')[0];
+                const now = new Date();
+                const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
                 const isFuture = date > todayStr;
                 
                 // Data flow: pending -> stored
