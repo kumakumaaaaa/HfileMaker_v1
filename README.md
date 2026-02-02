@@ -42,3 +42,4 @@ npm run dev
 
 ### 5. データ保存
 *   ブラウザの `LocalStorage` にデータを保存（デモ用仕様）。
+*   詳細なデータ構造については [SCHEMA.md](./SCHEMA.md) を参照してください。
