@@ -1,98 +1,99 @@
-# HfileMaker Data Schema
+# HfileMaker データスキーマ定義
 
-This document outlines the data structure used in the HfileMaker application. The system uses a normalized relational model, currently implemented using browser `LocalStorage`.
+本ドキュメントでは、HfileMakerアプリケーションで使用されるデータ構造について記述します。
+システムは正規化されたリレーショナルモデルを採用しており、現在はブラウザの `LocalStorage` を使用して実装されています。
 
-## ER Diagram (Entity-Relationship)
+## ER図 (Entity-Relationship Diagram)
 
 ```mermaid
 erDiagram
-    %% Master Tables
+    %% マスタテーブル
     Patient {
-        string id PK "System ID (e.g., p001)"
-        string identifier "Patient ID (e.g., 10001)"
-        string name "Full Name"
-        string gender "1:Male, 2:Female, 3:Other"
-        date birthDate "YYYY-MM-DD"
-        string postalCode "7 digits"
-        string address "Full address"
-        boolean excludeFromAssessment "Assessment Exclusion Flag"
-        string memo "Notes"
+        string id PK "システム内部ID (例: p001)"
+        string identifier "患者ID (例: 10001)"
+        string name "氏名"
+        string gender "1:男性, 2:女性, 3:その他"
+        date birthDate "生年月日 (YYYY-MM-DD)"
+        string postalCode "郵便番号 (7桁)"
+        string address "住所"
+        boolean excludeFromAssessment "評価対象外フラグ"
+        string memo "特記事項"
     }
 
     Admission {
-        string id PK "System ID (e.g., adm001)"
-        string patientId FK "Ref: Patient.id"
-        date admissionDate "YYYY-MM-DD"
-        date dischargeDate "YYYY-MM-DD (Nullable)"
-        string initialWard "Ward Name at Admission"
-        string initialRoom "Room No at Admission"
+        string id PK "システム内部ID (例: adm001)"
+        string patientId FK "参照: Patient.id"
+        date admissionDate "入院日 (YYYY-MM-DD)"
+        date dischargeDate "退院日 (NULL可)"
+        string initialWard "入院時の病棟名"
+        string initialRoom "入院時の病室番号"
     }
 
     DailyAssessment {
-        string id PK "Unique ID (e.g., yyyy-mm-dd_patientId)"
-        string patientId FK "Ref: Patient.id"
-        date date "Assessment Date"
-        json records "Assessment Data (Key-Value)"
+        string id PK "ユニークID (例: yyyy-mm-dd_patientId)"
+        string patientId FK "参照: Patient.id"
+        date date "評価実施日"
+        json records "評価データ (Key-Value形式)"
     }
 
-    %% Relationships
-    Patient ||--o{ Admission : "has history of"
-    Patient ||--o{ DailyAssessment : "has records of"
+    %% リレーションシップ
+    Patient ||--o{ Admission : "has history of (入院歴)"
+    Patient ||--o{ DailyAssessment : "has records of (評価記録)"
 ```
 
-## Table Definitions
+## テーブル定義
 
-### 1. Patient (Master)
-Represents the core identity of a patient. This data changes infrequently.
+### 1. Patient (患者マスタ)
+患者の個人情報を管理します。頻繁に変更されることのない属性情報です。
 
-| Field | Type | Description |
+| フィールド名 | 型 | 説明 |
 |---|---|---|
-| `id` | string (PK) | Internal system identifier. Randomly generated. |
-| `identifier` | string | Medical Record Number (Patient ID) displayed in UI. |
-| `name` | string | Patient's full name. |
-| `gender` | enum | '1' (Male), '2' (Female), '3' (Other). |
-| `birthDate` | string | Format: YYYY-MM-DD. |
-| `postalCode` | string | 7-digit postal code (used for address search). |
-| `address` | string | Full address derived from postal code or manually entered. |
-| `excludeFromAssessment` | boolean | If true, excluded from nursing necessity statistics. |
-| `memo` | string | Free text for medical notes or precautions. |
+| `id` | string (PK) | システム内部で一意に識別するためのID。ランダム生成されます。 |
+| `identifier` | string | 画面に表示される医療機関ごとの患者ID (カルテ番号)。 |
+| `name` | string | 患者の氏名。 |
+| `gender` | enum | 性別コード。 '1' (男性), '2' (女性), '3' (その他)。 |
+| `birthDate` | string | 生年月日。 YYYY-MM-DD 形式。 |
+| `postalCode` | string | 郵便番号 (7桁)。住所検索に使用されます。 |
+| `address` | string | 住所。検索結果または手入力により設定されます。 |
+| `excludeFromAssessment` | boolean | trueの場合、看護必要度の集計対象から除外されます。 |
+| `memo` | string | 申し送り事項や注意点などの自由記述メモ。 |
 
-### 2. Admission (Transaction)
- Represents a period of hospitalization. One patient can have multiple admission records over time.
+### 2. Admission (入院履歴)
+患者の「入院」というイベントを管理します。1人の患者に対して、過去の入院も含めて複数のレコードが存在し得ます。
 
-| Field | Type | Description |
+| フィールド名 | 型 | 説明 |
 |---|---|---|
-| `id` | string (PK) | Internal system identifier. |
-| `patientId` | string (FK) | Reference to `Patient.id`. |
-| `admissionDate` | string | Date of admission (YYYY-MM-DD). |
-| `dischargeDate` | string? | Date of discharge. `null` or `undefined` implies currently hospitalized. |
-| `initialWard` | string | Ward name at the time of admission (e.g., "一般病棟"). |
-| `initialRoom` | string | Room number at the time of admission. |
+| `id` | string (PK) | システム内部ID。 |
+| `patientId` | string (FK) | `Patient` テーブルの `id` への外部キー参照。 |
+| `admissionDate` | string | 入院年月日 (YYYY-MM-DD)。 |
+| `dischargeDate` | string? | 退院年月日。 `null` または `undefined` の場合は「現在入院中」を意味します。 |
+| `initialWard` | string | 入院時点での病棟名 (例: "一般病棟")。 |
+| `initialRoom` | string | 入院時点での病室番号。 |
 
-### 3. DailyAssessment (Transaction)
-Represents the nursing necessity assessment record for a specific day.
+### 3. DailyAssessment (日次評価)
+特定の日付における看護必要度の評価記録を管理します。
 
-| Field | Type | Description |
+| フィールド名 | 型 | 説明 |
 |---|---|---|
-| `patientId` | string (FK) | Reference to `Patient.id`. |
-| `date` | string | Date of assessment (YYYY-MM-DD). |
-| `records` | object | Key-value pairs of assessment items. |
-| `records[itemId]` | any | Value of the assessment (boolean for Checkbox, number/string for Select). |
+| `patientId` | string (FK) | `Patient` テーブルの `id` への外部キー参照。 |
+| `date` | string | 評価対象日 (YYYY-MM-DD)。 |
+| `records` | object | 評価項目のデータを Key-Value 形式で保持するJSONオブジェクト。 |
+| `records[itemId]` | any | 各項目の評価値 (チェックボックスならboolean、選択肢なら数値/文字列)。 |
 
-## Future Design Considerations (To Be Implemented)
+## 今後の拡張設計案 (Future Roadmap)
 
-To make the system more robust and scalable, the following tables should be introduced in a future update:
+システムの堅牢性と拡張性を高めるため、将来的には以下のテーブル導入が推奨されます。
 
-### 1. Ward/Room Master
-Instead of hardcoding "一般病棟" or "101", use master tables.
-*   **Ward**: `id`, `name`, `type`
-*   **Room**: `id`, `wardId`, `roomNumber`, `bedCount`
+### 1. 病棟・病室マスタ (Ward/Room Master)
+現在は "一般病棟" や "101" という文字列を直接保存していますが、マスタテーブルを作成して管理すべきです。
+*   **Ward (病棟)**: `id`, `name`, `type` (病棟種別)
+*   **Room (病室)**: `id`, `wardId`, `roomNumber`, `bedCount` (ベッド数)
 
-### 2. Transfer History
-Currently, only `initialWard` is recorded. To track transfers (e.g., General Ward -> ICU), a new table is needed.
+### 2. 転棟履歴 (Transfer History)
+現在は `Admission` テーブルに `initialWard` (入院時の病棟) しか持っていません。入院中に病棟移動（例：一般病棟 → ICU）があった場合を記録するため、履歴テーブルが必要です。
 *   **Transfer**: `id`, `admissionId`, `fromWardId`, `toWardId`, `transferDate`
 
-### 3. User (Nurse) Management
-To record *who* performed the assessment.
-*   **User**: `id`, `name`, `role`, `passwordHash`
-*   Add `created_by` and `updated_by` fields to `DailyAssessment`.
+### 3. ユーザー管理 (User/Nurse Management)
+「誰が」評価を行ったかを記録するために必要です。
+*   **User**: `id`, `name`, `role` (権限), `passwordHash`
+*   `DailyAssessment` テーブルに `created_by`, `updated_by` フィールドを追加して記録します。
