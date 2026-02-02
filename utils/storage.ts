@@ -1,28 +1,96 @@
-import { Patient, DailyAssessment } from '../types/nursing';
+import { Patient, Admission, DailyAssessment } from '../types/nursing';
 
-const STORAGE_KEY_PATIENTS = 'nursing_patients';
+
+const STORAGE_KEY_PATIENTS = 'nursing_patients_v3';
+const STORAGE_KEY_ADMISSIONS = 'nursing_admissions_v3'; // New
 const STORAGE_KEY_ASSESSMENTS_PREFIX = 'nursing_assessment_';
 
-// ダミーデータ生成
-const generateDummyPatients = (): Patient[] => {
-  return [
-    { id: 'p001', name: '佐藤 太郎', gender: '1', birthday: '1950-01-01', admissionDate: '2024-04-01' },
-    { id: 'p002', name: '鈴木 花子', gender: '2', birthday: '1945-05-15', admissionDate: '2024-04-10' },
-    { id: 'p003', name: '田中 一郎', gender: '1', birthday: '1960-11-20', admissionDate: '2024-04-05' },
-  ];
+// ダミーデータ生成 (Patients + Admissions)
+const generateDummyData = (): { patients: Patient[], admissions: Admission[] } => {
+  const patients: Patient[] = [];
+  const admissions: Admission[] = [];
+
+  // Helper to add patient & admission
+  const add = (id: string, name: string, gender: '1'|'2', birth: string, admDate: string, room: string, isDischarged: boolean = false, extraHistory: boolean = false) => {
+      const pid = `p${id}`;
+      patients.push({
+          id: pid,
+          identifier: `100${id}`,
+          name: name,
+          gender: gender,
+          birthDate: birth,
+          postalCode: '100-0001',
+          address: '東京都千代田区千代田1-1',
+          memo: extraHistory ? '入退院を繰り返しています' : (isDischarged ? '退院済み' : '特記事項なし')
+      });
+
+      // If extra history, add a past admission
+      if (extraHistory) {
+          admissions.push({
+              id: `adm${id}_past`,
+              patientId: pid,
+              admissionDate: '2023-01-10',
+              dischargeDate: '2023-02-15',
+              initialWard: '東病棟',
+              initialRoom: '201'
+          });
+      }
+
+      admissions.push({
+          id: `adm${id}`,
+          patientId: pid,
+          admissionDate: admDate,
+          dischargeDate: isDischarged ? '2024-05-20' : undefined, // Set discharge date if discharged
+          initialWard: '一般病棟',
+          initialRoom: room
+      });
+  };
+
+  // Create many dummy patients for pagination test
+  for(let i=1; i<=60; i++) {
+      const num = String(i).padStart(3, '0');
+      // Random generation
+      const isFemale = i % 2 === 0;
+      const birthYear = 1940 + (i % 50); // 1940-1990
+      const birthMonth = String((i % 12) + 1).padStart(2, '0');
+      const birthDay = String((i % 28) + 1).padStart(2, '0');
+      const birthDate = `${birthYear}-${birthMonth}-${birthDay}`;
+
+      const admMonth = String(((i + 3) % 12) + 1).padStart(2, '0');
+      const admDay = String(((i + 5) % 28) + 1).padStart(2, '0');
+      const admDate = `2024-${admMonth}-${admDay}`;
+      
+      const wards = ['西病棟', '東病棟', '南病棟'];
+      const ward = wards[i % 3];
+      const room = `${(i % 5) + 1}0${(i % 10)}`;
+
+      // Logic for discharged and multiple admissions
+      const isDischarged = i % 5 === 0; // Every 5th patient is discharged
+      const hasHistory = i % 7 === 0;   // Every 7th patient has past history
+
+      add(num, `ダミー 患者${i}`, isFemale ? '2' : '1', birthDate, admDate, room, isDischarged, hasHistory);
+      
+      // Update ward for the latest admission
+      if (admissions.length > 0) {
+          admissions[admissions.length - 1].initialWard = ward;
+      }
+  }
+
+  return { patients, admissions };
 };
 
 // データの初期化 (なければダミー作成)
 export const initializeStorage = (): Patient[] => {
   if (typeof window === 'undefined') return [];
   
-  const stored = localStorage.getItem(STORAGE_KEY_PATIENTS);
-  if (stored) {
-    return JSON.parse(stored);
+  const storedPatients = localStorage.getItem(STORAGE_KEY_PATIENTS);
+  if (storedPatients) {
+    return JSON.parse(storedPatients);
   } else {
-    const dummy = generateDummyPatients();
-    localStorage.setItem(STORAGE_KEY_PATIENTS, JSON.stringify(dummy));
-    return dummy;
+    const { patients, admissions } = generateDummyData();
+    localStorage.setItem(STORAGE_KEY_PATIENTS, JSON.stringify(patients));
+    localStorage.setItem(STORAGE_KEY_ADMISSIONS, JSON.stringify(admissions));
+    return patients;
   }
 };
 
@@ -31,6 +99,51 @@ export const getPatients = (): Patient[] => {
   if (typeof window === 'undefined') return [];
   const stored = localStorage.getItem(STORAGE_KEY_PATIENTS);
   return stored ? JSON.parse(stored) : [];
+};
+
+// 患者保存 (新規・更新)
+export const savePatient = (patient: Patient) => {
+  if (typeof window === 'undefined') return;
+  const patients = getPatients();
+  const index = patients.findIndex(p => p.id === patient.id);
+  
+  if (index >= 0) {
+    patients[index] = patient;
+  } else {
+    patients.push(patient);
+  }
+  localStorage.setItem(STORAGE_KEY_PATIENTS, JSON.stringify(patients));
+};
+
+// 入院歴取得
+export const getAdmissions = (patientId: string): Admission[] => {
+  if (typeof window === 'undefined') return [];
+  const stored = localStorage.getItem(STORAGE_KEY_ADMISSIONS);
+  const admissions: Admission[] = stored ? JSON.parse(stored) : [];
+  return admissions.filter(a => a.patientId === patientId);
+};
+
+// 入院歴保存
+export const saveAdmission = (admission: Admission) => {
+  if (typeof window === 'undefined') return;
+  const stored = localStorage.getItem(STORAGE_KEY_ADMISSIONS);
+  const admissions: Admission[] = stored ? JSON.parse(stored) : [];
+  
+  const index = admissions.findIndex(a => a.id === admission.id);
+  if (index >= 0) {
+    admissions[index] = admission;
+  } else {
+    admissions.push(admission);
+  }
+  localStorage.setItem(STORAGE_KEY_ADMISSIONS, JSON.stringify(admissions));
+};
+
+// 指定日の入院情報を取得
+export const getCurrentAdmission = (patientId: string, date: string): Admission | undefined => {
+  const admissions = getAdmissions(patientId);
+  return admissions.find(adm => {
+    return adm.admissionDate <= date && (!adm.dischargeDate || adm.dischargeDate >= date);
+  });
 };
 
 // 評価データ保存キーの生成
@@ -69,7 +182,7 @@ export const getPreviousDayAssessment = (patientId: string, currentDate: string)
 
   // 1日前
   date.setDate(date.getDate() - 1);
-  const prevDateStr = date.toISOString().split('T')[0];
+  const prevDateStr = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
   
   return getAssessment(patientId, prevDateStr);
 };
@@ -81,17 +194,12 @@ export const getMonthlyAssessments = (patientId: string, yearMonth: string): Rec
   const assessments: Record<string, DailyAssessment> = {};
   const prefix = `${STORAGE_KEY_ASSESSMENTS_PREFIX}${patientId}_${yearMonth}`;
 
-  // localStorageの全キーを走査して、prefixに一致するもの(つまり該当月の日付データ)を探す
-  // 日付キー形式: nursing_assessment_{patientId}_{YYYY-MM-DD}
-  // ただし prefix が {YYYY-MM} まで含んでいると、前方一致でフィルタ可能
-  
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (key && key.startsWith(prefix)) {
       const stored = localStorage.getItem(key);
       if (stored) {
         const assessment = JSON.parse(stored) as DailyAssessment;
-        // 日付をキーにして格納
         assessments[assessment.date] = assessment;
       }
     }

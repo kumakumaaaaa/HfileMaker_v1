@@ -104,25 +104,53 @@ export const ITEM_DEFINITIONS: NursingItemDefinition[] = [
 /**
  * 患者情報
  */
-export type Patient = {
-  id: string;         // データ識別番号
-  name: string;       // データ識別名
-  gender: '1' | '2';  // 性別 (1:男, 2:女)
-  birthday: string;   // 生年月日 (YYYY-MM-DD)
-  admissionDate: string; // 入院年月日 (YYYY-MM-DD)
-};
+export interface Patient {
+  id: string; // System ID
+  identifier: string; // 患者識別番号
+  name: string; // 氏名
+  gender: '1' | '2' | '3'; // 1:男性, 2:女性, 3:その他
+  birthDate: string; // YYYY-MM-DD
+  postalCode?: string;
+  address?: string;
+  excludeFromAssessment?: boolean;
+  memo?: string;
+}
+
+// 入院歴
+export interface Admission {
+  id: string;
+  patientId: string;
+  admissionDate: string; // YYYY-MM-DD
+  dischargeDate?: string | null; // YYYY-MM-DD or null
+  initialWard?: string;
+  initialRoom?: string;
+}
 
 /**
  * 日次評価データ
  */
-export type DailyAssessment = {
+export interface DailyAssessment {
   patientId: string;
-  date: string;       // 実施日 (YYYY-MM-DD)
-  items: Record<string, boolean | number>; // 評価項目の値 (入力状態)
-  admissionFeeId: string; // 選択された入院料ID
-  scores: { a: number; b: number; c: number }; // 計算されたスコア
-  isSevere: boolean;     // 判定結果（重症該当か）
-};
+  date: string; // YYYY-MM-DD
+  admissionFeeId: string; // 選択された入院料ID (評価基準)
+  
+  // 評価内容
+  items: Record<string, boolean | number>; 
+
+  // 自動計算結果
+  scores: {
+    a: number;
+    b: number;
+    c: number;
+  };
+  
+  // 重症度判定
+  isSevere: boolean;
+
+  // 評価時点の場所 (Phase 2 Additions)
+  ward?: string;
+  room?: string;
+}
 
 // 看護必要度評価（日々の評価レコードなど）
 export interface NursingAssessment {
