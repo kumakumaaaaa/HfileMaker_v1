@@ -73,7 +73,7 @@ export const MasterSettingsScreen: React.FC = () => {
 
     // --- Room Handlers ---
     const handleAddRoom = () => {
-        setEditingRoom({ code: '', name: '', startDate: '', endDate: '' });
+        setEditingRoom({ code: '', wardCode: '', name: '', startDate: '', endDate: '' });
         setIsEditing(true);
     };
 
@@ -177,6 +177,21 @@ export const MasterSettingsScreen: React.FC = () => {
                         {/* Ward/Room Fields */}
                         {(activeTab === 'ward' || activeTab === 'room') && (
                             <>
+                                {activeTab === 'room' && (
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-bold text-gray-500 mb-1">所属病棟</label>
+                                        <select
+                                            className="w-full border p-2 rounded text-lg"
+                                            value={editingRoom?.wardCode || ''}
+                                            onChange={e => setEditingRoom(prev => prev ? ({...prev, wardCode: e.target.value}) : null)}
+                                        >
+                                            <option value="">選択してください</option>
+                                            {wards.map(w => (
+                                                <option key={w.code} value={w.code}>{w.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-bold text-gray-500 mb-1">コード</label>
@@ -430,6 +445,7 @@ export const MasterSettingsScreen: React.FC = () => {
                         <thead className="bg-gray-100 text-gray-600 font-bold border-b border-gray-200">
                             <tr>
                                 <th className="px-6 py-3">ID/コード</th>
+                                {activeTab === 'room' && <th className="px-6 py-3">所属病棟</th>}
                                 <th className="px-6 py-3">名称</th>
                                 {activeTab === 'ward' && <th className="px-6 py-3">タイプ</th>}
                                 {activeTab === 'user' ? (
@@ -462,9 +478,14 @@ export const MasterSettingsScreen: React.FC = () => {
                             ))}
 
                             {/* Room Rows */}
-                            {activeTab === 'room' && displayRooms.map(r => (
+                            {activeTab === 'room' && displayRooms.map(r => {
+                                const parentWard = wards.find(w => w.code === r.wardCode);
+                                return (
                                 <tr key={r.code} className="hover:bg-blue-50/50">
                                     <td className="px-6 py-4 font-mono">{r.code}</td>
+                                    <td className="px-6 py-4 font-bold text-gray-600">
+                                        {parentWard ? parentWard.name : <span className="text-red-400 text-sm">(未設定)</span>}
+                                    </td>
                                     <td className="px-6 py-4 font-bold">{r.name}</td>
                                     <td className="px-6 py-4 font-mono text-gray-500">{r.startDate || '-'}</td>
                                     <td className="px-6 py-4 font-mono text-gray-500">{r.endDate || '-'}</td>
@@ -473,7 +494,8 @@ export const MasterSettingsScreen: React.FC = () => {
                                         <button onClick={() => handleDeleteRoom(r.code)} className="text-red-400 hover:bg-red-100 p-2 rounded"><Trash2 className="w-5 h-5" /></button>
                                     </td>
                                 </tr>
-                            ))}
+                                );
+                            })}
                             
                             {/* User Rows */}
                             {activeTab === 'user' && displayUsers.map(u => (

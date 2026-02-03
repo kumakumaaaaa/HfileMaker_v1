@@ -130,6 +130,7 @@ export interface Ward {
 // 病室マスタ
 export interface Room {
   code: string;
+  wardCode: string; // Link to Ward
   name: string;
   startDate?: string;
   endDate?: string;

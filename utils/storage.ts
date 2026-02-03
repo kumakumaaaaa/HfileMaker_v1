@@ -17,12 +17,15 @@ const INITIAL_WARDS: Ward[] = [
 
 // --- Room Master Data ---
 const INITIAL_ROOMS: Room[] = [
-    { code: '101', name: '101' }, { code: '102', name: '102' }, { code: '103', name: '103' },
-    { code: '201', name: '201' }, { code: '202', name: '202' }, { code: '203', name: '203' },
-    { code: '205', name: '205' }, { code: '206', name: '206' },
-    { code: '301', name: '301' }, { code: '302', name: '302' }, { code: '303', name: '303' },
-    { code: 'N101', name: '西101' }, { code: 'N102', name: '西102' },
-    { code: 'E101', name: '東101' }, { code: 'E102', name: '東102' },
+    { code: '101', wardCode: 'W001', name: '101' }, { code: '102', wardCode: 'W001', name: '102' }, { code: '103', wardCode: 'W001', name: '103' },
+    { code: 'E101', wardCode: 'W001', name: '東101' }, { code: 'E102', wardCode: 'W001', name: '東102' },
+
+    { code: '201', wardCode: 'W002', name: '201' }, { code: '202', wardCode: 'W002', name: '202' }, { code: '203', wardCode: 'W002', name: '203' },
+    { code: 'N101', wardCode: 'W002', name: '西101' }, { code: 'N102', wardCode: 'W002', name: '西102' },
+
+    { code: '301', wardCode: 'W003', name: '301' }, { code: '302', wardCode: 'W003', name: '302' }, { code: '303', wardCode: 'W003', name: '303' },
+
+    { code: '205', wardCode: 'W004', name: '205' }, { code: '206', wardCode: 'W004', name: '206' },
 ];
 
 // --- Master CRUD Operations ---
@@ -212,9 +215,15 @@ const generateDummyData = (): { patients: Patient[], admissions: Admission[] } =
       const admDay = String(((i + 5) % 28) + 1).padStart(2, '0');
       const admDate = `2024-${admMonth}-${admDay}`;
       
-      // Pick from master
-      const ward = INITIAL_WARDS[i % INITIAL_WARDS.length].name;
-      const room = INITIAL_ROOMS[i % INITIAL_ROOMS.length].name;
+      // Pick from master (Consistent Ward-Room)
+      const targetWard = INITIAL_WARDS[i % INITIAL_WARDS.length];
+      const validRooms = INITIAL_ROOMS.filter(r => r.wardCode === targetWard.code);
+      const targetRoom = validRooms.length > 0 
+          ? validRooms[i % validRooms.length] 
+          : { name: '未定' }; // Fallback
+
+      const ward = targetWard.name;
+      const room = targetRoom.name;
 
       // Logic for discharged, multiple admissions, and excluded
       const isDischarged = i % 5 === 0; // Every 5th

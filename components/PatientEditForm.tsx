@@ -360,7 +360,12 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                                         <label className="block text-sm font-bold text-gray-700 mb-1">入院時病棟</label>
                                         <select
                                             value={adm.initialWard || ''}
-                                            onChange={(e) => updateAdmission(adm.id, 'initialWard', e.target.value)}
+                                            onChange={(e) => {
+                                                const newWard = e.target.value;
+                                                // Clear room if ward changes
+                                                updateAdmission(adm.id, 'initialWard', newWard);
+                                                updateAdmission(adm.id, 'initialRoom', '');
+                                            }}
                                             className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                                         >
                                             <option value="">選択...</option>
@@ -375,11 +380,18 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                                             value={adm.initialRoom || ''}
                                             onChange={(e) => updateAdmission(adm.id, 'initialRoom', e.target.value)}
                                             className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                                            disabled={!adm.initialWard}
                                         >
                                             <option value="">選択...</option>
-                                            {rooms.filter(r => isAvailable(r) || r.name === adm.initialRoom).map(r => (
-                                                <option key={r.code} value={r.name}>{r.name}号室</option>
-                                            ))}
+                                            {(() => {
+                                                const selectedWardObj = wards.find(w => w.name === adm.initialWard);
+                                                if (!selectedWardObj) return null;
+
+                                                const validRooms = rooms.filter(r => r.wardCode === selectedWardObj.code);
+                                                return validRooms.filter(r => isAvailable(r) || r.name === adm.initialRoom).map(r => (
+                                                    <option key={r.code} value={r.name}>{r.name}号室</option>
+                                                ));
+                                            })()}
                                         </select>
                                     </div>
                                 </div>
@@ -433,21 +445,27 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                                                     <div className="col-span-5 grid grid-cols-2 gap-2">
                                                         {mov.type.startsWith('transfer') && (
                                                             <>
-                                                                <div>
-                                                                    <label className="block text-xs text-gray-500 mb-1">移動先病棟</label>
-                                                                    <select 
-                                                                        value={mov.ward || ''}
-                                                                        onChange={e => updateMovement(adm.id, mov.id, 'ward', e.target.value)}
-                                                                        disabled={mov.type === 'transfer_room'} // If room transfer only, keep ward same? No, logic says room transfer assumes same ward.
-                                                                        className={`w-full px-2 py-1.5 text-sm border border-gray-300 rounded bg-white ${mov.type === 'transfer_room' ? 'bg-gray-100 text-gray-400' : ''}`}
-                                                                    >
-                                                                        <option value="">(変更なし)</option>
-                                                                        {wards.filter(w => isAvailable(w) || w.name === mov.ward).map(w => (
-                                                                            <option key={w.code} value={w.name}>{w.name}</option>
-                                                                        ))}
-                                                                    </select>
-                                                                </div>
-                                                                <div>
+                                                                    <div>
+                                                                        <label className="block text-xs text-gray-500 mb-1">移動先病棟</label>
+                                                                        <select 
+                                                                            value={mov.ward || ''}
+                                                                            onChange={e => {
+                                                                                const newWard = e.target.value;
+                                                                                updateMovement(adm.id, mov.id, 'ward', newWard);
+                                                                                if (mov.type === 'transfer_ward') {
+                                                                                    updateMovement(adm.id, mov.id, 'room', '');
+                                                                                }
+                                                                            }}
+                                                                            disabled={mov.type === 'transfer_room'}
+                                                                            className={`w-full px-2 py-1.5 text-sm border border-gray-300 rounded bg-white ${mov.type === 'transfer_room' ? 'bg-gray-100 text-gray-400' : ''}`}
+                                                                        >
+                                                                            <option value="">{mov.type === 'transfer_room' ? '(変更なし)' : '選択...'}</option>
+                                                                            {wards.filter(w => isAvailable(w) || w.name === mov.ward).map(w => (
+                                                                                <option key={w.code} value={w.name}>{w.name}</option>
+                                                                            ))}
+                                                                        </select>
+                                                                    </div>
+                                                                    <div>
                                                                     <label className="block text-xs text-gray-500 mb-1">移動先病室</label>
                                                                     <select 
                                                                         value={mov.room || ''}
@@ -455,9 +473,21 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                                                                         className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded bg-white"
                                                                     >
                                                                         <option value="">選択...</option>
-                                                                        {rooms.filter(r => isAvailable(r) || r.name === mov.room).map(r => (
-                                                                            <option key={r.code} value={r.name}>{r.name}号室</option>
-                                                                        ))}
+                                                                        {(() => {
+                                                                            // Filter by ward if a ward is selected (transfer_ward)
+                                                                            // If no ward selected (e.g. initial transfer_room with no ward data), show all or try best effort
+                                                                            const targetWardName = mov.ward;
+                                                                            const targetWardObj = targetWardName ? wards.find(w => w.name === targetWardName) : null;
+                                                                            
+                                                                            let roomOptions = rooms;
+                                                                            if (targetWardObj) {
+                                                                                roomOptions = rooms.filter(r => r.wardCode === targetWardObj.code);
+                                                                            }
+                                                                            
+                                                                            return roomOptions.filter(r => isAvailable(r) || r.name === mov.room).map(r => (
+                                                                                <option key={r.code} value={r.name}>{r.name}号室</option>
+                                                                            ));
+                                                                        })()}
                                                                     </select>
                                                                 </div>
                                                             </>

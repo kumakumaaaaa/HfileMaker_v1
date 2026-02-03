@@ -3,6 +3,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { DailyAssessment, ITEM_DEFINITIONS, NursingItemDefinition, Admission, Patient } from '../types/nursing';
 import { getMonthlyAssessments, saveAssessment, deleteAssessment, getAdmissions, getPreviousDayAssessment, getPatients, savePatient } from '../utils/storage';
+import { getPatientLocationAndStatus, getActiveAdmission } from '../utils/patientHelper';
 import { evaluatePatient } from '../utils/evaluation';
 import { CellEditPopup } from './CellEditPopup'; // Import popup
 import { Edit2, Save, X, AlertCircle, Copy, Trash2, ChevronLeft, ChevronRight, User, Calendar, ArrowRight, Building2, BedDouble, Activity } from 'lucide-react'; // Icons
@@ -68,18 +69,10 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
     }
   }, [patientId, propAdmissions, lastUpdated]);
 
-  // Helper: Find valid admission for a specific date
-  const getAdmissionForDate = (date: string): Admission | undefined => {
-    return admissions.find(adm => {
-      const start = adm.admissionDate;
-      const end = adm.dischargeDate;
-      return date >= start && (!end || date <= end);
-    });
-  };
 
   // Helper: Check if date is valid (within any admission)
   const isValidDate = (date: string): boolean => {
-    return !!getAdmissionForDate(date);
+    return !!getActiveAdmission(admissions, date);
   };
   
   // Helper: Month Navigation
@@ -170,44 +163,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
     position: { x: number; y: number };
   }>({ isOpen: false, item: null, position: { x: 0, y: 0 } });
 
-  // Calculation for Matrix Header (Ward/Room/Status)
-  const getDailyStatus = (date: string) => {
-      const admission = getAdmissionForDate(date);
-      if (!admission) return { ward: '-', room: '-', status: '-' };
 
-      let currentWard = admission.initialWard || '-';
-      let currentRoom = admission.initialRoom || '-';
-      let status = '入院中';
-
-      // Check for specific events on this day
-      if (admission.admissionDate === date) status = '入院';
-      if (admission.dischargeDate === date) status = '退院';
-
-      // Apply movements chronologically up to this date
-      const validMovements = (admission.movements || [])
-          .filter(m => m.date <= date)
-          .sort((a,b) => a.date.localeCompare(b.date));
-
-      for (const m of validMovements) {
-          if (m.type === 'transfer_ward') {
-              if (m.ward) currentWard = m.ward;
-              if (m.room) currentRoom = m.room; // Often changed with ward
-              if (m.date === date) status = '転棟';
-          } else if (m.type === 'transfer_room') {
-              if (m.room) currentRoom = m.room;
-              if (m.date === date) status = '転床';
-          } else if (m.type === 'overnight') {
-              // Check overlap
-              if (m.date === date) status = '外泊'; // Start day
-              else if (m.endDate && date > m.date && date <= m.endDate) status = '外泊中';
-          }
-      }
-      
-      // Override status priority: Discharge > Transfer/Overnight > Admission > Normal
-      if (admission.dischargeDate === date) status = '退院';
-      
-      return { ward: currentWard, room: currentRoom, status };
-  };
 
   // Helper: Get linear list of all items for navigation
   const allItems = useMemo(() => [
@@ -248,7 +204,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
         return;
     }
 
-    const admission = getAdmissionForDate(date);
+    const admission = getActiveAdmission(admissions, date);
     if (!admission) {
         alert('この日付に該当する入院記録がありません。入院日を確認してください。');
         return;
@@ -289,7 +245,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
   // Copy from Previous Day
   const handleCopyPrevious = (targetDate: string) => {
       // Find valid admission for TARGET date?
-      const admission = getAdmissionForDate(targetDate);
+      const admission = getActiveAdmission(admissions, targetDate);
       if (!admission) {
            alert('この日付は入院期間外です');
            return;
@@ -398,7 +354,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
   const handleDelete = (date: string) => {
       if (!confirm(`${date} のデータを削除しますか？`)) return;
       
-      const admission = getAdmissionForDate(date);
+      const admission = getActiveAdmission(admissions, date);
       if (admission) {
           deleteAssessment(admission.id, date);
       } else {
@@ -863,7 +819,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                  </div>
                </td>
                {dateList.map(date => {
-                 const { ward } = getDailyStatus(date);
+                 const { ward } = getPatientLocationAndStatus(admissions, date);
                  return (
                    <td key={date} className="border border-gray-300 p-2 text-center text-xs whitespace-nowrap bg-white text-gray-600">
                      {ward}
@@ -879,7 +835,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                  </div>
                </td>
                {dateList.map(date => {
-                 const { room } = getDailyStatus(date);
+                 const { room } = getPatientLocationAndStatus(admissions, date);
                  return (
                    <td key={date} className="border border-gray-300 p-2 text-center text-xs font-mono bg-white text-gray-600">
                      {room !== '-' ? `${room}` : '-'}
@@ -895,7 +851,8 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                  </div>
                </td>
                {dateList.map(date => {
-                 const { status } = getDailyStatus(date);
+                 const { status: rawStatus } = getPatientLocationAndStatus(admissions, date);
+                 const status = rawStatus || '';
                  let statusColor = 'text-gray-400';
                  let bg = 'bg-white'; // default white
                  if (status === '入院') { statusColor = 'text-blue-600 font-bold'; bg = 'bg-blue-50'; }
@@ -905,7 +862,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                  
                  return (
                    <td key={date} className={`border border-gray-300 border-b-2 border-b-gray-300 p-2 text-center text-xs whitespace-nowrap ${bg} ${statusColor}`}>
-                     {status}
+                     {status || '-'}
                    </td>
                  );
                })}

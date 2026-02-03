@@ -11,6 +11,8 @@ interface PatientDetailScreenProps {
   onBack?: () => void; // Optional for split-view usage
   onUpdate?: () => void;
   onEditingChange?: (isEditing: boolean) => void;
+  initialTab?: DetailTab;
+  hideHeader?: boolean;
 }
 
 type DetailTab = 'basic' | 'matrix';
@@ -20,9 +22,11 @@ export const PatientDetailScreen: React.FC<PatientDetailScreenProps> = ({
   admissions, 
   onBack, 
   onUpdate,
-  onEditingChange 
+  onEditingChange,
+  initialTab = 'basic',
+  hideHeader = false
 }) => {
-  const [activeTab, setActiveTab] = useState<DetailTab>('basic');
+  const [activeTab, setActiveTab] = useState<DetailTab>(initialTab);
   const [currentDate, setCurrentDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [isFormEditing, setIsFormEditing] = useState(false);
   const [isMatrixDirty, setIsMatrixDirty] = useState(false);
@@ -68,6 +72,8 @@ export const PatientDetailScreen: React.FC<PatientDetailScreenProps> = ({
   return (
     <div className="flex flex-col h-full bg-gray-50 text-lg"> {/* Increased base font */}
       {/* Header */}
+      {/* Header */}
+      {!hideHeader && (
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center gap-4 shrink-0 shadow-sm">
         {onBack && (
           <button 
@@ -89,6 +95,7 @@ export const PatientDetailScreen: React.FC<PatientDetailScreenProps> = ({
           </h2>
         </div>
       </div>
+      )}
 
       <div className="px-6 pt-4 flex gap-2 border-b border-gray-200 shrink-0">
           <button
