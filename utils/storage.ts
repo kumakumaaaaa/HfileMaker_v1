@@ -1,8 +1,101 @@
-import { Patient, Admission, DailyAssessment } from '../types/nursing';
+import { Patient, Admission, DailyAssessment, Ward, Room, UserAccount } from '../types/nursing';
 
-const STORAGE_KEY_PATIENTS = 'nursing_patients_v5';
-const STORAGE_KEY_ADMISSIONS = 'nursing_admissions_v5';
+const STORAGE_KEY_PATIENTS = 'nursing_patients_v7'; // Bump version for new masters
+const STORAGE_KEY_ADMISSIONS = 'nursing_admissions_v7';
+const STORAGE_KEY_WARDS = 'nursing_wards_v1';
+const STORAGE_KEY_ROOMS = 'nursing_rooms_v1';
+const STORAGE_KEY_USERS = 'nursing_users_v1';
 const STORAGE_KEY_ASSESSMENTS_PREFIX = 'nursing_assessment_';
+
+// --- Ward Master Data ---
+const INITIAL_WARDS: Ward[] = [
+    { code: 'W001', name: '一般病棟（東）', type: '一般病棟' },
+    { code: 'W002', name: '一般病棟（西）', type: '一般病棟' },
+    { code: 'W003', name: '精神科病棟', type: '精神病棟' },
+    { code: 'W004', name: '療養病棟', type: 'その他' },
+];
+
+// --- Room Master Data ---
+const INITIAL_ROOMS: Room[] = [
+    { code: '101', name: '101' }, { code: '102', name: '102' }, { code: '103', name: '103' },
+    { code: '201', name: '201' }, { code: '202', name: '202' }, { code: '203', name: '203' },
+    { code: '205', name: '205' }, { code: '206', name: '206' },
+    { code: '301', name: '301' }, { code: '302', name: '302' }, { code: '303', name: '303' },
+    { code: 'N101', name: '西101' }, { code: 'N102', name: '西102' },
+    { code: 'E101', name: '東101' }, { code: 'E102', name: '東102' },
+];
+
+// --- Master CRUD Operations ---
+export const getWards = (): Ward[] => {
+    if (typeof window === 'undefined') return INITIAL_WARDS;
+    const stored = localStorage.getItem(STORAGE_KEY_WARDS);
+    return stored ? JSON.parse(stored) : INITIAL_WARDS;
+};
+
+export const saveWard = (ward: Ward) => {
+    const list = getWards();
+    const idx = list.findIndex(w => w.code === ward.code);
+    const newList = idx >= 0 ? list.map((w, i) => i === idx ? ward : w) : [...list, ward];
+    if (typeof window !== 'undefined') localStorage.setItem(STORAGE_KEY_WARDS, JSON.stringify(newList));
+    return newList;
+}
+
+export const deleteWard = (code: string) => {
+    const list = getWards();
+    const newList = list.filter(w => w.code !== code);
+    if (typeof window !== 'undefined') localStorage.setItem(STORAGE_KEY_WARDS, JSON.stringify(newList));
+    return newList;
+}
+
+export const getRooms = (): Room[] => {
+    if (typeof window === 'undefined') return INITIAL_ROOMS;
+    const stored = localStorage.getItem(STORAGE_KEY_ROOMS);
+    return stored ? JSON.parse(stored) : INITIAL_ROOMS;
+};
+
+export const saveRoom = (room: Room) => {
+    const list = getRooms();
+    const idx = list.findIndex(r => r.code === room.code);
+    const newList = idx >= 0 ? list.map((r, i) => i === idx ? room : r) : [...list, room];
+    if (typeof window !== 'undefined') localStorage.setItem(STORAGE_KEY_ROOMS, JSON.stringify(newList));
+    return newList;
+}
+
+export const deleteRoom = (code: string) => {
+    const list = getRooms();
+    const newList = list.filter(r => r.code !== code);
+    if (typeof window !== 'undefined') localStorage.setItem(STORAGE_KEY_ROOMS, JSON.stringify(newList));
+    return newList;
+}
+
+// --- User Master Logic ---
+const INITIAL_USERS: UserAccount[] = [
+    { id: 'u1', userId: 'admin', name: 'システム管理者', password: 'password', role: '管理者', authority: 'システム管理者アカウント' },
+    { id: 'u2', userId: 'manager', name: '施設管理者', password: 'password', role: '管理者', authority: '施設管理者アカウント' },
+    { id: 'u3', userId: 'staff1', name: '看護 太郎', password: 'password', role: '評価者', authority: '一般アカウント' },
+    { id: 'u4', userId: 'staff2', name: '医療 花子', password: 'password', role: '入力者', authority: '一般アカウント' },
+];
+
+export const getUsers = (): UserAccount[] => {
+    if (typeof window === 'undefined') return INITIAL_USERS;
+    const stored = localStorage.getItem(STORAGE_KEY_USERS);
+    return stored ? JSON.parse(stored) : INITIAL_USERS;
+};
+
+export const saveUser = (user: UserAccount) => {
+    const list = getUsers();
+    const idx = list.findIndex(u => u.id === user.id);
+    const newList = idx >= 0 ? list.map((u, i) => i === idx ? user : u) : [...list, user];
+    if (typeof window !== 'undefined') localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(newList));
+    return newList;
+}
+
+export const deleteUser = (id: string) => {
+    const list = getUsers();
+    const newList = list.filter(u => u.id !== id);
+    if (typeof window !== 'undefined') localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(newList));
+    return newList;
+}
 
 // --- CRUD Operations ---
 
@@ -58,8 +151,13 @@ const generateDummyData = (): { patients: Patient[], admissions: Admission[] } =
   const patients: Patient[] = [];
   const admissions: Admission[] = [];
 
+  // Real names for generation
+  const familyNames = ['佐藤', '鈴木', '高橋', '田中', '伊藤', '渡辺', '山本', '中村', '小林', '加藤'];
+  const maleGivenNames = ['健太', '大輔', '誠', '直人', '翔太', '浩之', '剛', '一郎', '進', '明'];
+  const femaleGivenNames = ['美咲', '愛', '陽子', '裕子', '恵子', '香織', '真由美', '直子', '千尋', '彩'];
+
   // Helper to add patient & admission
-  const add = (id: string, name: string, gender: '1'|'2', birth: string, admDate: string, room: string, isDischarged: boolean = false, extraHistory: boolean = false, isExcluded: boolean = false) => {
+  const add = (id: string, name: string, gender: '1'|'2', birth: string, admDate: string, room: string, isDischarged: boolean = false, extraHistory: boolean = false, isExcluded: boolean = false, wardName: string) => {
       const pid = `p${id}`;
       patients.push({
           id: pid,
@@ -80,7 +178,7 @@ const generateDummyData = (): { patients: Patient[], admissions: Admission[] } =
               patientId: pid,
               admissionDate: '2023-01-10',
               dischargeDate: '2023-02-15',
-              initialWard: '東病棟',
+              initialWard: '一般病棟（東）',
               initialRoom: '201'
           });
       }
@@ -90,7 +188,7 @@ const generateDummyData = (): { patients: Patient[], admissions: Admission[] } =
           patientId: pid,
           admissionDate: admDate,
           dischargeDate: isDischarged ? '2024-05-20' : undefined, // Set discharge date if discharged
-          initialWard: '一般病棟',
+          initialWard: wardName,
           initialRoom: room
       });
   };
@@ -98,8 +196,13 @@ const generateDummyData = (): { patients: Patient[], admissions: Admission[] } =
   // Create many dummy patients for pagination test
   for(let i=1; i<=60; i++) {
       const num = String(i).padStart(3, '0');
+      
       // Random generation
       const isFemale = i % 2 === 0;
+      const fName = familyNames[i % 10];
+      const gName = isFemale ? femaleGivenNames[(i % 10)] : maleGivenNames[(i % 10)];
+      const fullName = `${fName} ${gName}`;
+      
       const birthYear = 1940 + (i % 50); // 1940-1990
       const birthMonth = String((i % 12) + 1).padStart(2, '0');
       const birthDay = String((i % 28) + 1).padStart(2, '0');
@@ -109,21 +212,16 @@ const generateDummyData = (): { patients: Patient[], admissions: Admission[] } =
       const admDay = String(((i + 5) % 28) + 1).padStart(2, '0');
       const admDate = `2024-${admMonth}-${admDay}`;
       
-      const wards = ['西病棟', '東病棟', '南病棟'];
-      const ward = wards[i % 3];
-      const room = `${(i % 5) + 1}0${(i % 10)}`;
+      // Pick from master
+      const ward = INITIAL_WARDS[i % INITIAL_WARDS.length].name;
+      const room = INITIAL_ROOMS[i % INITIAL_ROOMS.length].name;
 
       // Logic for discharged, multiple admissions, and excluded
       const isDischarged = i % 5 === 0; // Every 5th
       const hasHistory = i % 7 === 0;   // Every 7th
       const isExcluded = i % 8 === 0;   // Every 8th is excluded
 
-      add(num, `ダミー 患者${i}`, isFemale ? '2' : '1', birthDate, admDate, room, isDischarged, hasHistory, isExcluded);
-      
-      // Update ward for the latest admission
-      if (admissions.length > 0) {
-          admissions[admissions.length - 1].initialWard = ward;
-      }
+      add(num, fullName, isFemale ? '2' : '1', birthDate, admDate, room, isDischarged, hasHistory, isExcluded, ward);
   }
 
   return { patients, admissions };
@@ -140,6 +238,15 @@ export const initializeStorage = (): Patient[] => {
     const { patients, admissions } = generateDummyData();
     localStorage.setItem(STORAGE_KEY_PATIENTS, JSON.stringify(patients));
     localStorage.setItem(STORAGE_KEY_ADMISSIONS, JSON.stringify(admissions));
+    
+    // Seed Masters if missing (or always on reset)
+    if (!localStorage.getItem(STORAGE_KEY_WARDS)) {
+        localStorage.setItem(STORAGE_KEY_WARDS, JSON.stringify(INITIAL_WARDS));
+    }
+    if (!localStorage.getItem(STORAGE_KEY_ROOMS)) {
+        localStorage.setItem(STORAGE_KEY_ROOMS, JSON.stringify(INITIAL_ROOMS));
+    }
+    
     return patients;
   }
 };

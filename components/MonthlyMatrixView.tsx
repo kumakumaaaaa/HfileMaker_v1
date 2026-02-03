@@ -1,26 +1,32 @@
 'use client';
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { DailyAssessment, ITEM_DEFINITIONS, NursingItemDefinition, Admission } from '../types/nursing';
-import { getMonthlyAssessments, saveAssessment, deleteAssessment, getCurrentAdmission, getPreviousDayAssessment } from '../utils/storage';
+import { DailyAssessment, ITEM_DEFINITIONS, NursingItemDefinition, Admission, Patient } from '../types/nursing';
+import { getMonthlyAssessments, saveAssessment, deleteAssessment, getAdmissions, getPreviousDayAssessment, getPatients, savePatient } from '../utils/storage';
 import { evaluatePatient } from '../utils/evaluation';
 import { CellEditPopup } from './CellEditPopup'; // Import popup
-import { Edit2, Save, X, AlertCircle, Copy, Trash2 } from 'lucide-react'; // Icons
+import { Edit2, Save, X, AlertCircle, Copy, Trash2, ChevronLeft, ChevronRight, User, Calendar, ArrowRight, Building2, BedDouble, Activity } from 'lucide-react'; // Icons
 
 interface MonthlyMatrixViewProps {
   patientId: string;
+  patient?: Patient;         // Optional: Pass patient object to avoid refetch
+  admissions?: Admission[];  // Optional: Pass admissions to avoid refetch
   currentDate: string; // YYYY-MM-DD
   onDateSelect: (date: string) => void;
   lastUpdated?: number;
   onDirtyChange?: (isDirty: boolean) => void;
+  onPatientRefresh?: () => void;
 }
 
 export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({ 
-  patientId, 
+  patientId,
+  patient: propPatient,
+  admissions: propAdmissions,
   currentDate, 
   onDateSelect,
   lastUpdated,
-  onDirtyChange
+  onDirtyChange,
+  onPatientRefresh
 }) => {
   // --- Basic Data Loading ---
   const targetDateObj = new Date(currentDate);
@@ -35,22 +41,84 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
   });
 
   const [monthlyData, setMonthlyData] = useState<Record<string, DailyAssessment>>({});
-  const [activeAdmission, setActiveAdmission] = useState<Admission | undefined>(undefined);
+  const [admissions, setAdmissions] = useState<Admission[]>(propAdmissions || []);
+  const [patient, setPatient] = useState<Patient | undefined>(propPatient);
 
-  // Determine Active Admission for the focused date
-  useEffect(() => {
-    const admission = getCurrentAdmission(patientId, currentDate);
-    setActiveAdmission(admission);
-  }, [patientId, currentDate]);
+  // Memo Editing State
+  const [isEditingMemo, setIsEditingMemo] = useState(false);
+  const [memoInput, setMemoInput] = useState('');
 
-  // Load Data for the Active Admission
+  // Load Patient & Admissions if not provided
   useEffect(() => {
-    if (!activeAdmission) {
+    if (!propPatient) {
+        const allPatients = getPatients();
+        const found = allPatients.find(p => p.id === patientId);
+        setPatient(found);
+    } else {
+        setPatient(propPatient);
+    }
+  }, [patientId, propPatient, lastUpdated]);
+
+  useEffect(() => {
+    if (!propAdmissions) {
+        const allAdmissions = getAdmissions(patientId);
+        setAdmissions(allAdmissions);
+    } else {
+        setAdmissions(propAdmissions);
+    }
+  }, [patientId, propAdmissions, lastUpdated]);
+
+  // Helper: Find valid admission for a specific date
+  const getAdmissionForDate = (date: string): Admission | undefined => {
+    return admissions.find(adm => {
+      const start = adm.admissionDate;
+      const end = adm.dischargeDate;
+      return date >= start && (!end || date <= end);
+    });
+  };
+
+  // Helper: Check if date is valid (within any admission)
+  const isValidDate = (date: string): boolean => {
+    return !!getAdmissionForDate(date);
+  };
+  
+  // Helper: Month Navigation
+  const handleMonthChange = (delta: number) => {
+    if (editingDate) {
+        if (!confirm('編集中のデータは破棄されますが、移動してもよろしいですか？')) return;
+        setEditingDate(null);
+        setPendingChanges({});
+    }
+    const newDate = new Date(year, month - 1 + delta, 1);
+    const newDateStr = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}-${String(newDate.getDate()).padStart(2, '0')}`;
+    onDateSelect(newDateStr);
+  };
+
+  // Load Data (Merge assessments from all relevant admissions in this month)
+  useEffect(() => {
+    if (admissions.length === 0) {
         setMonthlyData({});
         return;
     }
-    setMonthlyData(getMonthlyAssessments(activeAdmission.id, yearMonth));
-  }, [activeAdmission, yearMonth, lastUpdated]);
+
+    // Find admissions that potentially overlap with this month
+    const startOfMonth = dateList[0];
+    const endOfMonth = dateList[dateList.length - 1];
+
+    const relevantAdmissions = admissions.filter(adm => {
+        const start = adm.admissionDate;
+        const end = adm.dischargeDate || '9999-12-31';
+        return start <= endOfMonth && end >= startOfMonth;
+    });
+
+    let mergedData: Record<string, DailyAssessment> = {};
+    relevantAdmissions.forEach(adm => {
+        const data = getMonthlyAssessments(adm.id, yearMonth);
+        mergedData = { ...mergedData, ...data };
+    });
+    
+    setMonthlyData(mergedData);
+  }, [admissions, yearMonth, lastUpdated]); // dateList is stable enough derived from yearMonth
 
   const itemsByCategory = useMemo(() => {
     const grouped = { a: [], b: [], c: [] } as Record<string, typeof ITEM_DEFINITIONS>;
@@ -102,6 +170,45 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
     position: { x: number; y: number };
   }>({ isOpen: false, item: null, position: { x: 0, y: 0 } });
 
+  // Calculation for Matrix Header (Ward/Room/Status)
+  const getDailyStatus = (date: string) => {
+      const admission = getAdmissionForDate(date);
+      if (!admission) return { ward: '-', room: '-', status: '-' };
+
+      let currentWard = admission.initialWard || '-';
+      let currentRoom = admission.initialRoom || '-';
+      let status = '入院中';
+
+      // Check for specific events on this day
+      if (admission.admissionDate === date) status = '入院';
+      if (admission.dischargeDate === date) status = '退院';
+
+      // Apply movements chronologically up to this date
+      const validMovements = (admission.movements || [])
+          .filter(m => m.date <= date)
+          .sort((a,b) => a.date.localeCompare(b.date));
+
+      for (const m of validMovements) {
+          if (m.type === 'transfer_ward') {
+              if (m.ward) currentWard = m.ward;
+              if (m.room) currentRoom = m.room; // Often changed with ward
+              if (m.date === date) status = '転棟';
+          } else if (m.type === 'transfer_room') {
+              if (m.room) currentRoom = m.room;
+              if (m.date === date) status = '転床';
+          } else if (m.type === 'overnight') {
+              // Check overlap
+              if (m.date === date) status = '外泊'; // Start day
+              else if (m.endDate && date > m.date && date <= m.endDate) status = '外泊中';
+          }
+      }
+      
+      // Override status priority: Discharge > Transfer/Overnight > Admission > Normal
+      if (admission.dischargeDate === date) status = '退院';
+      
+      return { ward: currentWard, room: currentRoom, status };
+  };
+
   // Helper: Get linear list of all items for navigation
   const allItems = useMemo(() => [
     ...itemsByCategory.a,
@@ -130,20 +237,20 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
 
   // Start Editing
   const handleStartEdit = (date: string) => {
-    // Check if we have an active admission for this date (or at least one for the current context)
-    // Note: If user clicks edit on a date OUTSIDE the active admission range, specific check?
-    // Since we only load data for `activeAdmission`, creating data for a date outside its range is technically possible but logic wise wrong if we strictly enforce.
-    // Ideally we should check if `date` is within `activeAdmission`.
+    // 1. Future Check
+    // 2. Admission Check (Dynamic)
     
-    if (!activeAdmission) {
-        alert('この日付に該当する入院記録がありません。入院日を確認してください。');
+    // Future check moved here for strictness
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    if (date > todayStr) {
+        alert('未来の日付は編集できません。');
         return;
     }
-    
-    // Strict date check?
-    // If admissionDate > date or (dischargeDate && dischargeDate < date), warn?
-    if (date < activeAdmission.admissionDate || (activeAdmission.dischargeDate && date > activeAdmission.dischargeDate)) {
-        alert('入院期間外の日付は編集できません。');
+
+    const admission = getAdmissionForDate(date);
+    if (!admission) {
+        alert('この日付に該当する入院記録がありません。入院日を確認してください。');
         return;
     }
 
@@ -159,12 +266,12 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
     // Initialize scores
     const { items, scoreA, scoreB, scoreC } = initialDataToState(initialItems, admissionFeeId);
     
-    // ID generation logic moved to storage? Or just use format.
-    const id = `${date}_${activeAdmission.id}`;
+    // ID generation
+    const id = `${date}_${admission.id}`;
 
     const initialAssessment: DailyAssessment = {
       id,
-      admissionId: activeAdmission.id,
+      admissionId: admission.id,
       date,
       items,
       admissionFeeId,
@@ -181,7 +288,12 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
 
   // Copy from Previous Day
   const handleCopyPrevious = (targetDate: string) => {
-      if (!activeAdmission) return;
+      // Find valid admission for TARGET date?
+      const admission = getAdmissionForDate(targetDate);
+      if (!admission) {
+           alert('この日付は入院期間外です');
+           return;
+      }
 
       const idx = dateList.indexOf(targetDate);
       if (idx <= 0) {
@@ -195,13 +307,31 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
       
       // If not in current month view (e.g. 1st of month), fetch from storage
       if (!prevData) {
-          // Sync fetch wrapper? getPreviousDayAssessment requires admissionId
-           const fetched = getPreviousDayAssessment(activeAdmission.id, targetDate); // This actually fetches YESTERDAY of target
+           // We need PREVIOUS admission? Or assume same admission usually.
+           // Actually, if crossing month boundary but same admission, getPreviousDayAssessment works if we pass admissionId.
+           // If admission changed (e.g. re-admitted on 1st), prev day belongs to DIFFERENT admission?
+           // getPreviousDayAssessment expects admissionId.
+           // Since we want to copy data, maybe allow copying from *any* previous data?
+           // But `getPreviousDayAssessment` signature requires admissionId.
+           // Let's use `getAssessmentForDate` logic (manual fetch) to be robust?
+           // Actually, `getPreviousDayAssessment` implementation subtracts 1 day.
+           // So `getPreviousDayAssessment(admission.id, targetDate)` tries to find prev day record LINKED TO THIS ADMISSION.
+           // If previous day was prior admission (or no admission), it returns null.
+           // This is correct behavior: don't auto-copy across different admissions.
+           
+           const fetched = getPreviousDayAssessment(admission.id, targetDate); 
            if (fetched) prevData = fetched;
       }
       
       if (!prevData) {
           alert('前日のデータが登録されていません');
+          return;
+      }
+
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      if (targetDate > todayStr) {
+          alert('未来の日付は編集できません。');
           return;
       }
 
@@ -212,10 +342,10 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
       const newItems = { ...prevData.items };
       const { scoreA, scoreB, scoreC } = initialDataToState(newItems, prevData.admissionFeeId);
       
-      const id = `${targetDate}_${activeAdmission.id}`;
+      const id = `${targetDate}_${admission.id}`;
       const newAssessment: DailyAssessment = {
           id,
-          admissionId: activeAdmission.id,
+          admissionId: admission.id,
           date: targetDate,
           items: newItems,
           admissionFeeId: prevData.admissionFeeId,
@@ -247,10 +377,17 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
         saveAssessment(pendingChanges[date]);
     });
     
-    // Reload data to reflect persistence (and ensure consistent state)
-    if (activeAdmission) {
-        setMonthlyData(getMonthlyAssessments(activeAdmission.id, yearMonth));
-    }
+    // Reload data logic update: re-fetch relevant admissions
+    // Re-triggering the useEffect by updating 'lastUpdated' in parent or local force update?
+    // Since we save to localStorage, but useEffect depends on [admissions, yearMonth, lastUpdated].
+    // We can just locally update state for immediate feedback.
+    setMonthlyData(prev => {
+        const next = { ...prev };
+        dates.forEach(d => {
+            next[d] = pendingChanges[d];
+        });
+        return next;
+    });
     
     setEditingDate(null);
     setPendingChanges({});
@@ -259,10 +396,20 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
 
   // Delete Data
   const handleDelete = (date: string) => {
-      if (!activeAdmission) return;
       if (!confirm(`${date} のデータを削除しますか？`)) return;
       
-      deleteAssessment(activeAdmission.id, date);
+      const admission = getAdmissionForDate(date);
+      if (admission) {
+          deleteAssessment(admission.id, date);
+      } else {
+          // If no admission for this date, maybe data is orphan or something, but we can't key it to delete properly with new logic.
+          // But technically if there is data, there SHOULD be an admission ID in it?
+          // monthlyData[date] has admissionId.
+          const data = monthlyData[date];
+          if (data && data.admissionId) {
+               deleteAssessment(data.admissionId, date);
+          }
+      }
       
       setMonthlyData(prev => {
           const next = { ...prev };
@@ -433,18 +580,195 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
     }));
   };
 
+  // Memo Handlers
+  const handleStartMemoEdit = () => {
+    if (editingDate) {
+         if (!confirm('編集中のデータは破棄されますが、移動してもよろしいですか？')) return;
+         setEditingDate(null);
+         setPendingChanges({});
+    }
+    setMemoInput(patient?.memo || '');
+    setIsEditingMemo(true);
+  };
+
+  const handleSaveMemo = () => {
+    if (!patient) return;
+    const updated = { ...patient, memo: memoInput };
+    savePatient(updated);
+    setPatient(updated); 
+    setIsEditingMemo(false);
+    onPatientRefresh?.();
+  };
+
   return (
-    <div className="flex flex-col bg-white rounded-lg shadow mb-6 border border-gray-200 w-full overflow-hidden">
-      <div className="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-        <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-          月間評価推移 ({year}年{month}月) 
-          {editingDate && <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded flex items-center gap-1"><Edit2 className="w-3 h-3"/> 編集中: {editingDate}</span>}
-        </h2>
-      </div>
+    <div className="flex flex-col h-full bg-white relative w-full overflow-hidden rounded-lg shadow border border-gray-200">
       
-      {/* Scrollable Container */}
-      <div className="w-full overflow-x-auto max-h-[80vh]"> 
-        <table className="w-full text-xs text-center border-separate border-spacing-0">
+      {/* Header Section: Summary & Controls */}
+      <div className="shrink-0 z-40 bg-white border-b border-gray-200 shadow-sm relative">
+         {/* Top Row: Patient Summary */}
+         {patient && (
+            <div className={`px-6 py-4 flex items-start justify-between gap-6 ${patient.excludeFromAssessment ? 'bg-red-50' : 'bg-blue-50/30'}`}>
+                <div className="flex-1 min-w-0">
+                     <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2">
+                         <div className="flex items-center gap-3">
+                             <span className="text-4xl font-bold text-gray-900 tracking-tight">{patient.name}</span>
+                             {patient.excludeFromAssessment && (
+                                 <span className="flex items-center gap-1 bg-red-600 text-white px-3 py-1 rounded-full text-base font-bold shadow-sm animate-pulse">
+                                     <AlertCircle className="w-5 h-5" /> 評価対象外
+                                 </span>
+                             )}
+                         </div>
+                         
+                         <div className="flex flex-wrap items-center gap-3 text-lg text-gray-700 mt-2">
+                             <span className="font-mono bg-white px-2 py-0.5 rounded border border-gray-300 font-bold text-gray-600 text-base">ID: {patient.identifier}</span>
+                             
+                             {/* Gender Visuals */}
+                             {patient.gender === '1' && (
+                                 <span className="flex items-center gap-1 text-blue-700 font-bold bg-blue-100 px-2 py-0.5 rounded text-base">
+                                     <User className="w-4 h-4" /> 男性
+                                 </span>
+                             )}
+                             {patient.gender === '2' && (
+                                 <span className="flex items-center gap-1 text-pink-700 font-bold bg-pink-100 px-2 py-0.5 rounded text-base">
+                                     <User className="w-4 h-4" /> 女性
+                                 </span>
+                             )}
+                             {patient.gender !== '1' && patient.gender !== '2' && (
+                                 <span className="flex items-center gap-1 text-gray-700 font-bold bg-gray-200 px-2 py-0.5 rounded text-base">
+                                     <User className="w-4 h-4" /> その他
+                                 </span>
+                             )}
+
+                             <span className="text-base font-bold">{patient.birthDate}生</span>
+
+                             {/* Inline Memo */}
+                             <div className="flex items-center gap-2 flex-1 min-w-[300px] ml-2">
+                                <div 
+                                    className="flex items-center gap-1 font-bold text-orange-600 text-base cursor-pointer hover:bg-orange-50 rounded px-1 transition-colors shrink-0"
+                                    onClick={handleStartMemoEdit}
+                                    title="メモを編集"
+                                >
+                                    <Edit2 className="w-4 h-4" /> メモ:
+                                </div>
+                                {isEditingMemo ? (
+                                    <div className="flex-1 flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={memoInput}
+                                            onChange={(e) => setMemoInput(e.target.value)}
+                                            className="flex-1 text-sm border border-orange-300 rounded px-2 py-1 focus:ring-2 focus:ring-orange-500 font-sans"
+                                            autoFocus
+                                            placeholder="メモを入力..."
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') handleSaveMemo();
+                                                if (e.key === 'Escape') setIsEditingMemo(false);
+                                            }}
+                                        />
+                                        <button 
+                                            onClick={handleSaveMemo}
+                                            className="px-2 py-1 bg-orange-600 text-white rounded hover:bg-orange-700 text-xs font-bold whitespace-nowrap"
+                                        >
+                                            <Save className="w-3 h-3 inline mr-1" />保存
+                                        </button>
+                                        <button 
+                                            onClick={() => setIsEditingMemo(false)}
+                                            className="px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs font-bold whitespace-nowrap"
+                                        >
+                                            <X className="w-3 h-3 inline" />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <span 
+                                        className="text-gray-800 text-base bg-yellow-50 border border-yellow-200 rounded px-2 py-0.5 truncate cursor-pointer hover:bg-yellow-100 transition-colors flex-1 max-w-2xl"
+                                        onClick={handleStartMemoEdit}
+                                        title={patient.memo || "クリックしてメモを追加"}
+                                    >
+                                        {patient.memo || <span className="text-gray-400 italic text-sm">メモなし</span>}
+                                    </span>
+                                )}
+                             </div>
+                         </div>
+                     </div>
+                     
+
+                     {/* Compact Admission History */}
+                     <div className="flex items-center gap-2 mt-2 bg-blue-50/50 p-2 rounded-lg border border-blue-100 overflow-hidden">
+                         <div className="flex items-center gap-1 font-bold text-blue-700 text-sm whitespace-nowrap">
+                             <Calendar className="w-4 h-4" /> 入院歴:
+                         </div>
+                         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                             {admissions.length > 0 ? (
+                                 <>
+                                    {admissions
+                                        .sort((a, b) => b.admissionDate.localeCompare(a.admissionDate))
+                                        .slice(0, 3)
+                                        .map(adm => {
+                                            const isActive = !adm.dischargeDate || adm.dischargeDate >= currentDate;
+                                            return (
+                                                <div 
+                                                    key={adm.id} 
+                                                    onClick={() => {
+                                                        if (editingDate) {
+                                                            if (!confirm('編集中のデータは破棄されますが、移動してもよろしいですか？')) return;
+                                                            setEditingDate(null);
+                                                            setPendingChanges({});
+                                                        }
+                                                        const [y, m] = adm.admissionDate.split('-');
+                                                        onDateSelect(`${y}-${m}-01`);
+                                                    }}
+                                                    title="入院月に移動"
+                                                    className={`flex items-center gap-1 px-2 py-0.5 rounded text-sm cursor-pointer transition-colors whitespace-nowrap ${isActive ? 'bg-white border border-blue-300 text-blue-900 font-bold shadow-sm hover:bg-blue-50' : 'text-gray-500 hover:bg-gray-100'}`}
+                                                >
+                                                    <span className="font-mono">{adm.admissionDate}</span>
+                                                    <ArrowRight className="w-3 h-3 text-gray-400" />
+                                                    <span className="font-mono">{adm.dischargeDate || '継続'}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    {admissions.length > 3 && (
+                                        <span className="text-gray-500 text-xs font-bold">+{admissions.length - 3}</span>
+                                    )}
+                                 </>
+                             ) : (
+                                 <span className="text-gray-400 text-xs">なし</span>
+                             )}
+                         </div>
+                     </div>
+                </div>
+
+                {/* Month Controller (Right Side - Prominent) */}
+                <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border-2 border-blue-600 shadow-lg self-center shrink-0 ml-4">
+                     <button 
+                        onClick={() => handleMonthChange(-1)} 
+                        className="p-2 hover:bg-blue-100 text-blue-700 rounded-full transition-colors" 
+                        title="前月"
+                     >
+                         <ChevronLeft className="w-8 h-8" />
+                     </button>
+                     <div className="text-center min-w-[110px] flex flex-col items-center justify-center">
+                         <div className="text-xl text-blue-600 font-extrabold tracking-tight leading-none mb-1">{year}年</div>
+                         <div className="text-4xl font-black text-blue-800 leading-none tracking-normal" style={{ fontFeatureSettings: '"tnum"' }}>
+                             {month}<span className="text-xl ml-1 font-bold text-blue-600">月</span>
+                         </div>
+                     </div>
+                     <button 
+                        onClick={() => handleMonthChange(1)} 
+                        className="p-2 hover:bg-blue-100 text-blue-700 rounded-full transition-colors" 
+                        title="次月"
+                     >
+                         <ChevronRight className="w-8 h-8" />
+                     </button>
+                </div>
+            </div>
+         )}
+      </div>
+
+      {/* Main Table Area */}
+      <div className="flex-1 overflow-auto relative bg-gray-50/50">
+        
+        {/* Scrollable Container Content */}
+        <div className="min-w-max"> 
+        <table className="w-full text-base text-center border-separate border-spacing-0">
           <thead className="bg-gray-100">
             <tr>
               <th className="p-2 border border-gray-300 min-w-[300px] text-left bg-gray-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] outline outline-1 outline-gray-300" 
@@ -454,33 +778,43 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                 const isSelected = date === currentDate;
                 const isEditing = date === editingDate;
                 
-                // Future check
+                // Future calculation
                 const now = new Date();
                 const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
                 const isFuture = date > todayStr;
+
+                // Admission Validity & Excluded Check
+                const isValid = isValidDate(date);
+                // CRITICAL UPDATE: Editing is disabled if patient is Excluded, even if date is valid
+                const isEditable = isValid && !isFuture && !patient?.excludeFromAssessment;
                 
-                // Data flow: pending -> stored
+                // Data
                 const pending = pendingChanges[date];
                 const stored = monthlyData[date];
                 const data = pending || stored;
                 const isPending = !!pending;
                 const isSevere = data?.isSevere;
                 
+                // Excluded styling override
+                const isExcluded = patient?.excludeFromAssessment;
+
                 return (
                   <th 
                     key={date} 
                     className={`
                       p-2 border border-gray-300 min-w-[60px] transition-colors relative group
+                      ${isExcluded ? 'bg-red-50' : ''}
                       ${isEditing ? 'bg-yellow-50 border-yellow-400 border-2 border-b-0' : ''}
                       ${!isEditing && isSelected ? 'bg-blue-600 text-white' : ''}
-                      ${!isEditing && !isSelected ? 'bg-gray-100 hover:bg-gray-200' : ''}
+                      ${!isEditing && !isSelected && !isExcluded ? 'bg-gray-100 hover:bg-gray-200' : ''}
                       ${!isEditing && isSevere ? 'bg-pink-100 text-red-800' : ''}
-                      ${isFuture ? 'bg-gray-50 cursor-not-allowed' : ''}
+                      ${!isEditable ? 'text-gray-400 cursor-not-allowed' : ''}
+                      ${!isEditable && !isExcluded ? 'bg-gray-200' : ''} 
                     `}
                     style={{ position: 'sticky', top: 0, zIndex: 50 }}
-                    onClick={() => !isEditing && !isFuture && onDateSelect(date)}
+                    onClick={() => !isEditing && isEditable && onDateSelect(date)}
                   >
-                    <div className={`flex flex-col items-center gap-1 ${isFuture ? 'opacity-50' : ''}`}>
+                    <div className={`flex flex-col items-center gap-1 ${!isEditable ? 'opacity-50' : ''}`}>
                       <span>{day}</span>
                       {isEditing ? (
                          <div className="flex gap-1 z-50 relative items-center"> 
@@ -489,8 +823,8 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                          </div>
                       ) : (
                         <div className="h-5 flex gap-1 items-center justify-center">
-                             {/* Copy Previous Button - Only if NO data for current date AND not future */}
-                             {dateIdx > 0 && !monthlyData[date] && !isFuture && (
+                             {/* Copy Previous Button */}
+                             {dateIdx > 0 && !monthlyData[date] && isEditable && (
                                 <button
                                     onClick={(e) => { e.stopPropagation(); handleCopyPrevious(date); }}
                                     className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
@@ -500,7 +834,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                                 </button>
                              )}
                              {/* Edit Button */}
-                             {!isFuture && (
+                             {isEditable && (
                                  <button 
                                     onClick={(e) => { e.stopPropagation(); handleStartEdit(date); }}
                                     className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
@@ -512,7 +846,6 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                         </div>
                       )}
                       
-                      {/* Pending Indicator */}
                       {isPending && !isEditing && <span className="w-2 h-2 bg-red-500 rounded-full"></span>}
                     </div>
                   </th>
@@ -521,6 +854,63 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
             </tr>
           </thead>
           <tbody>
+            {/* --- Info Rows (Ward/Room/Status) --- */}
+            <tr>
+               <td className="p-2 border border-gray-300 font-bold text-gray-700 shadow-sm" style={{ position: 'sticky', left: 0, zIndex: 45, background: '#f3f4f6' }}>
+                 <div className="flex items-center gap-2 pl-1">
+                    <Building2 className="w-4 h-4 text-gray-500" />
+                    <span className="text-sm">病棟</span>
+                 </div>
+               </td>
+               {dateList.map(date => {
+                 const { ward } = getDailyStatus(date);
+                 return (
+                   <td key={date} className="border border-gray-300 p-2 text-center text-xs whitespace-nowrap bg-white text-gray-600">
+                     {ward}
+                   </td>
+                 );
+               })}
+            </tr>
+            <tr>
+               <td className="p-2 border border-gray-300 font-bold text-gray-700 shadow-sm" style={{ position: 'sticky', left: 0, zIndex: 45, background: '#f3f4f6' }}>
+                 <div className="flex items-center gap-2 pl-1">
+                    <BedDouble className="w-4 h-4 text-gray-500" />
+                    <span className="text-sm">病室</span>
+                 </div>
+               </td>
+               {dateList.map(date => {
+                 const { room } = getDailyStatus(date);
+                 return (
+                   <td key={date} className="border border-gray-300 p-2 text-center text-xs font-mono bg-white text-gray-600">
+                     {room !== '-' ? `${room}` : '-'}
+                   </td>
+                 );
+               })}
+            </tr>
+            <tr>
+               <td className="p-2 border border-gray-300 font-bold text-gray-700 shadow-sm border-b-2 border-b-gray-300" style={{ position: 'sticky', left: 0, zIndex: 45, background: '#f3f4f6' }}>
+                 <div className="flex items-center gap-2 pl-1">
+                    <Activity className="w-4 h-4 text-gray-500" />
+                    <span className="text-sm">状況</span>
+                 </div>
+               </td>
+               {dateList.map(date => {
+                 const { status } = getDailyStatus(date);
+                 let statusColor = 'text-gray-400';
+                 let bg = 'bg-white'; // default white
+                 if (status === '入院') { statusColor = 'text-blue-600 font-bold'; bg = 'bg-blue-50'; }
+                 if (status === '退院') { statusColor = 'text-red-600 font-bold'; bg = 'bg-red-50'; }
+                 if (status.includes('転')) { statusColor = 'text-orange-600 font-bold'; bg = 'bg-orange-50'; }
+                 if (status.includes('外泊')) { statusColor = 'text-purple-600 font-bold'; bg = 'bg-purple-50'; }
+                 
+                 return (
+                   <td key={date} className={`border border-gray-300 border-b-2 border-b-gray-300 p-2 text-center text-xs whitespace-nowrap ${bg} ${statusColor}`}>
+                     {status}
+                   </td>
+                 );
+               })}
+            </tr>
+
             {/* Rows Logic Helper */}
             {(() => {
                 const renderRow = (item: NursingItemDefinition) => (
@@ -530,9 +920,16 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                       {item.label}
                     </td>
                     {dateList.map((date, dateIdx) => {
-                      // ... (existing logic)
+
                       const isEditing = date === editingDate;
                       
+                      // Also grey out cell if invalid
+                      const isValid = isValidDate(date);
+                      const now = new Date();
+                      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                      const isFuture = date > todayStr;
+                      const isEditable = isValid && !isFuture && !patient?.excludeFromAssessment; // Also check Excluded
+
                       // Data
                       const pending = pendingChanges[date];
                       const stored = monthlyData[date];
@@ -552,7 +949,6 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                       let isDirty = false;
                       
                       if (pending) {
-                          // Default values for comparison
                           const defaultVal = item.inputType === 'checkbox' ? false : 0;
                           
                           const pVal = pending.items?.[item.id] ?? defaultVal;
@@ -562,7 +958,6 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                               isDirty = true;
                           }
                           
-                          // Check assistance for B items
                           if (!isDirty && item.category === 'b' && item.hasAssistance) {
                               const pAssist = pending.items?.[`${item.id}_assist`] ?? 1;
                               const sAssist = stored?.items?.[`${item.id}_assist`] ?? 1;
@@ -585,6 +980,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                             ${isFocused ? 'bg-yellow-200 outline outline-2 outline-blue-500 z-10' : ''} 
                             ${isEditing ? 'border-yellow-400 border-x-2' : ''}
                             ${!isEditing && data?.isSevere ? 'bg-pink-50' : ''}
+                            ${!isEditable && !isEditing ? 'bg-gray-100' : ''}
                           `}
                           onClick={(e) => isEditing && handleCellClick(e, date, item)}
                         >
@@ -665,6 +1061,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
             </tr>
           </tbody>
         </table>
+      </div>
       </div>
 
       {/* Popup */}

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Save, User, Activity, Flag, Calendar, Trash2, Plus } from 'lucide-react';
-import { Patient, Admission } from '../types/nursing';
+import { Patient, Admission, Ward, Room } from '../types/nursing';
+import { getWards, getRooms } from '../utils/storage';
 
 interface PatientEditFormProps {
   initialPatient?: Patient;
@@ -15,6 +16,19 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
   onSave, 
   onCancel 
 }) => {
+  // Master Data
+  const wards = getWards();
+  const rooms = getRooms();
+  const today = new Date().toISOString().split('T')[0];
+
+  const isAvailable = (item: { startDate?: string, endDate?: string }) => {
+      // If start date is future, not available
+      if (item.startDate && item.startDate > today) return false;
+      // If end date is past, not available
+      if (item.endDate && item.endDate < today) return false;
+      return true;
+  };
+
   // Basic Info State
   const [identifier, setIdentifier] = useState(initialPatient?.identifier || '');
   const [name, setName] = useState(initialPatient?.name || '');
@@ -30,14 +44,6 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
 
   // Address Search State
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
-
-  // Rooms Mock
-  const rooms = [
-      '101', '102', '103', '105', '106',
-      '201', '202', '203', '205', '206',
-      '301', '302', '303', '305', '306',
-      '西101', '西102', '東101', '東102'
-  ];
 
   // Validation
   const isFormValid = identifier && name && birthDate;
@@ -104,6 +110,37 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
       setAdmissions(admissions.map(a => 
           a.id === id ? { ...a, [field]: value } : a
       ));
+  };
+
+  // Movement Handlers
+  const addMovement = (admissionId: string) => {
+      const newMov = {
+          id: `mov_${Date.now()}_${Math.random()}`,
+          type: 'transfer_ward' as const,
+          date: new Date().toISOString().split('T')[0]
+      };
+      setAdmissions(admissions.map(a => {
+          if (a.id !== admissionId) return a;
+          const current = a.movements || [];
+          return { ...a, movements: [...current, newMov] };
+      }));
+  };
+
+  const removeMovement = (admissionId: string, movementId: string) => {
+      setAdmissions(admissions.map(a => {
+          if (a.id !== admissionId) return a;
+          return { ...a, movements: (a.movements || []).filter(m => m.id !== movementId) };
+      }));
+  };
+
+  const updateMovement = (admissionId: string, movementId: string, field: string, value: any) => {
+      setAdmissions(admissions.map(a => {
+          if (a.id !== admissionId) return a;
+          const movements = (a.movements || []).map(m => 
+              m.id === movementId ? { ...m, [field]: value } : m
+          );
+          return { ...a, movements };
+      }));
   };
 
   return (
@@ -266,10 +303,11 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
 
                     <div className="md:col-span-2">
                         <label className="block text-sm font-bold text-gray-500 uppercase mb-2">メモ</label>
-                        <textarea 
+                        <input 
+                            type="text"
                             value={memo}
                             onChange={(e) => setMemo(e.target.value)}
-                            className="w-full px-4 py-3 text-xl border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none h-24"
+                            className="w-full px-4 py-3 text-lg border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                             placeholder="特記事項があれば入力してください"
                         />
                     </div>
@@ -297,66 +335,178 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                         </div>
                     )}
                     {admissions.map((adm, index) => (
-                        <div key={adm.id} className="p-6 bg-gray-50 rounded-lg border border-gray-200 relative group">
+                        <div key={adm.id} className="p-6 bg-white rounded-lg border border-gray-300 shadow-sm relative group">
                             <button 
                                 onClick={() => removeAdmission(adm.id)}
-                                className="absolute top-4 right-4 text-gray-400 hover:text-red-500 transition-colors p-2"
-                                title="削除"
+                                className="absolute top-4 right-4 text-gray-400 hover:text-red-600 transition-colors p-2 z-10"
+                                title="この入院記録を削除"
                             >
                                 <Trash2 className="w-5 h-5" />
                             </button>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pr-10">
-                                <div className="flex items-center gap-2">
-                                    <div className="flex-1">
-                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">入院日</label>
+                            <div className="space-y-6">
+                                {/* Section 1: Admission Start Info */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-700 mb-1">入院日 <span className="text-red-500">*</span></label>
                                         <input 
                                             type="date"
                                             value={adm.admissionDate}
                                             onChange={(e) => updateAdmission(adm.id, 'admissionDate', e.target.value)}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded bg-white"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
                                         />
                                     </div>
-                                    <span className="text-gray-400 pt-5">〜</span>
-                                    <div className="flex-1">
-                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">退院日 (空欄で入院中)</label>
-                                        <input 
-                                            type="date"
-                                            value={adm.dischargeDate || ''}
-                                            onChange={(e) => updateAdmission(adm.id, 'dischargeDate', e.target.value)}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded bg-white"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                     <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">入院時病棟</label>
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-700 mb-1">入院時病棟</label>
                                         <select
                                             value={adm.initialWard || ''}
                                             onChange={(e) => updateAdmission(adm.id, 'initialWard', e.target.value)}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded bg-white"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                                         >
                                             <option value="">選択...</option>
-                                            <option value="一般病棟">一般病棟</option>
-                                            <option value="西病棟">西病棟</option>
-                                            <option value="東病棟">東病棟</option>
-                                            <option value="南病棟">南病棟</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">入院時病室</label>
-                                        <select 
-                                            value={adm.initialRoom || ''}
-                                            onChange={(e) => updateAdmission(adm.id, 'initialRoom', e.target.value)}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded bg-white"
-                                        >
-                                            <option value="">選択...</option>
-                                            {rooms.map(r => (
-                                                <option key={r} value={r}>{r}号室</option>
+                                            {wards.filter(w => isAvailable(w) || w.name === adm.initialWard).map(w => (
+                                                <option key={w.code} value={w.name}>{w.name}</option>
                                             ))}
                                         </select>
                                     </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-700 mb-1">入院時病室</label>
+                                        <select 
+                                            value={adm.initialRoom || ''}
+                                            onChange={(e) => updateAdmission(adm.id, 'initialRoom', e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                                        >
+                                            <option value="">選択...</option>
+                                            {rooms.filter(r => isAvailable(r) || r.name === adm.initialRoom).map(r => (
+                                                <option key={r.code} value={r.name}>{r.name}号室</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Section 2: Movements */}
+                                <div className="border-t border-b border-gray-100 py-4">
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h4 className="font-bold text-gray-700 flex items-center gap-2 text-sm">
+                                            <Activity className="w-4 h-4 text-blue-500" /> 異動・外泊履歴
+                                        </h4>
+                                        <button
+                                            onClick={() => addMovement(adm.id)}
+                                            className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1.5 rounded font-bold transition-colors flex items-center gap-1"
+                                        >
+                                            <Plus className="w-3 h-3" /> 追加
+                                        </button>
+                                    </div>
+                                    
+                                    <div className="space-y-3">
+                                        {adm.movements && adm.movements.length > 0 ? (
+                                            adm.movements.sort((a,b) => a.date.localeCompare(b.date)).map((mov, idx) => (
+                                                <div key={mov.id} className="grid grid-cols-12 gap-2 items-end bg-gray-50/50 p-3 rounded border border-gray-200">
+                                                    {/* Type */}
+                                                    <div className="col-span-3">
+                                                        <label className="block text-xs text-gray-500 mb-1">区分</label>
+                                                        <select 
+                                                            value={mov.type} 
+                                                            onChange={e => updateMovement(adm.id, mov.id, 'type', e.target.value)}
+                                                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded bg-white"
+                                                        >
+                                                            <option value="transfer_ward">転棟</option>
+                                                            <option value="transfer_room">転床</option>
+                                                            <option value="overnight">外泊</option>
+                                                        </select>
+                                                    </div>
+
+                                                    {/* Date */}
+                                                    <div className="col-span-3">
+                                                        <label className="block text-xs text-gray-500 mb-1">
+                                                            {mov.type === 'overnight' ? '開始日' : '異動日'}
+                                                        </label>
+                                                        <input 
+                                                            type="date" 
+                                                            value={mov.date} 
+                                                            onChange={e => updateMovement(adm.id, mov.id, 'date', e.target.value)}
+                                                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
+                                                        />
+                                                    </div>
+
+                                                    {/* Dynamic Details */}
+                                                    <div className="col-span-5 grid grid-cols-2 gap-2">
+                                                        {mov.type.startsWith('transfer') && (
+                                                            <>
+                                                                <div>
+                                                                    <label className="block text-xs text-gray-500 mb-1">移動先病棟</label>
+                                                                    <select 
+                                                                        value={mov.ward || ''}
+                                                                        onChange={e => updateMovement(adm.id, mov.id, 'ward', e.target.value)}
+                                                                        disabled={mov.type === 'transfer_room'} // If room transfer only, keep ward same? No, logic says room transfer assumes same ward.
+                                                                        className={`w-full px-2 py-1.5 text-sm border border-gray-300 rounded bg-white ${mov.type === 'transfer_room' ? 'bg-gray-100 text-gray-400' : ''}`}
+                                                                    >
+                                                                        <option value="">(変更なし)</option>
+                                                                        {wards.filter(w => isAvailable(w) || w.name === mov.ward).map(w => (
+                                                                            <option key={w.code} value={w.name}>{w.name}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-xs text-gray-500 mb-1">移動先病室</label>
+                                                                    <select 
+                                                                        value={mov.room || ''}
+                                                                        onChange={e => updateMovement(adm.id, mov.id, 'room', e.target.value)}
+                                                                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded bg-white"
+                                                                    >
+                                                                        <option value="">選択...</option>
+                                                                        {rooms.filter(r => isAvailable(r) || r.name === mov.room).map(r => (
+                                                                            <option key={r.code} value={r.name}>{r.name}号室</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+                                                            </>
+                                                        )}
+
+                                                        {mov.type === 'overnight' && (
+                                                            <div className="col-span-2">
+                                                                <label className="block text-xs text-gray-500 mb-1">終了日 (任意)</label>
+                                                                <input 
+                                                                    type="date" 
+                                                                    value={mov.endDate || ''} 
+                                                                    onChange={e => updateMovement(adm.id, mov.id, 'endDate', e.target.value)}
+                                                                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
+                                                                />
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Remove Button */}
+                                                    <div className="col-span-1 flex justify-end pb-1">
+                                                        <button 
+                                                            onClick={() => removeMovement(adm.id, mov.id)}
+                                                            className="text-gray-400 hover:text-red-500 p-1 rounded hover:bg-red-50 transition-colors"
+                                                            title="履歴を削除"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="text-sm text-gray-400 italic py-2 pl-2 border-l-4 border-gray-200 bg-gray-50">
+                                                ・ 履歴はありません
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Section 3: Discharge */}
+                                <div className="max-w-xs">
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">退院日</label>
+                                    <input 
+                                        type="date"
+                                        value={adm.dischargeDate || ''}
+                                        onChange={(e) => updateAdmission(adm.id, 'dischargeDate', e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                                        placeholder="未定/入院中"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1 ml-1">※ 空欄の場合は入院中として扱われます</p>
                                 </div>
                             </div>
                         </div>

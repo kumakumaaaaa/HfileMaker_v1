@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Users, BedDouble, Settings } from 'lucide-react';
+import { LayoutDashboard, Users, BedDouble, Settings, Building2 } from 'lucide-react';
 
 export type TabType = 'home' | 'inpatients' | 'patients' | 'wards' | 'settings';
 
@@ -13,12 +13,12 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ activeTab, onTabChan
     { id: 'home', label: 'ホーム', icon: LayoutDashboard },
     { id: 'patients', label: '患者管理', icon: Users }, // Moved here
     { id: 'inpatients', label: '入院患者', icon: BedDouble },
-    { id: 'wards', label: '病棟・病室', icon: BedDouble },
+    { id: 'wards', label: '病棟・病室', icon: Building2 },
     { id: 'settings', label: 'マスタ設定', icon: Settings },
   ] as const;
 
   return (
-    <header className="bg-white border-b border-gray-200 h-14 flex items-center px-4 shrink-0">
+    <header className="bg-white border-b border-gray-200 h-14 flex items-center px-4 shrink-0 relative z-50">
       <div className="font-bold text-xl mr-8 text-blue-900">
         HfileMaker
       </div>

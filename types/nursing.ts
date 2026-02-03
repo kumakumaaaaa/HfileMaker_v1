@@ -116,6 +116,42 @@ export interface Patient {
   memo?: string;
 }
 
+// 病棟マスタ
+export type WardType = '一般病棟' | '精神病棟' | 'その他';
+
+export interface Ward {
+  code: string;
+  name: string;
+  type: WardType;
+  startDate?: string;
+  endDate?: string;
+}
+
+// 病室マスタ
+export interface Room {
+  code: string;
+  name: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+// 異動履歴（転棟・転床・外泊）
+export type MovementType = 'transfer_ward' | 'transfer_room' | 'overnight'; // transfer_ward=転棟, transfer_room=転床, overnight=外泊
+
+export interface Movement {
+  id: string;
+  type: MovementType;
+  date: string; // 発生日 (転棟・転床日または外泊開始日)
+  endDate?: string; // 外泊終了日 (外泊のみ使用、転棟・転床は次回異動まで継続とみなす)
+  
+  // 転棟・転床先
+  ward?: string;
+  room?: string;
+  
+  // 外泊などのメモ
+  note?: string;
+}
+
 // 入院歴
 export interface Admission {
   id: string;
@@ -124,6 +160,7 @@ export interface Admission {
   dischargeDate?: string | null; // YYYY-MM-DD or null
   initialWard?: string;
   initialRoom?: string;
+  movements?: Movement[];
 }
 
 /**
@@ -184,3 +221,18 @@ export const NURSING_STANDARDS = {
     }
   }
 } as const;
+
+// --- Account Master ---
+export type UserRole = '入力者' | '評価者' | '管理者';
+export type AccountAuthority = '一般アカウント' | '施設管理者アカウント' | 'システム管理者アカウント';
+
+export interface UserAccount {
+  id: string; // Internal UUID
+  userId: string; // Login ID
+  name: string; // User Name
+  password: string; 
+  role: UserRole; // ユーザータイプ
+  authority: AccountAuthority; // アカウントタイプ
+  startDate?: string;
+  endDate?: string;
+}

@@ -8,7 +8,7 @@ import { savePatient, saveAdmissions } from '../utils/storage';
 interface PatientDetailScreenProps {
   patient: Patient;
   admissions: Admission[];
-  onBack: () => void;
+  onBack?: () => void; // Optional for split-view usage
   onUpdate?: () => void;
   onEditingChange?: (isEditing: boolean) => void;
 }
@@ -24,30 +24,43 @@ export const PatientDetailScreen: React.FC<PatientDetailScreenProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<DetailTab>('basic');
   const [currentDate, setCurrentDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [isEditing, setIsEditing] = useState(false);
+  const [isFormEditing, setIsFormEditing] = useState(false);
+  const [isMatrixDirty, setIsMatrixDirty] = useState(false);
 
-  // Notify parent of editing state
+  // Notify parent of editing state (Form OR Matrix)
   useEffect(() => {
-    onEditingChange?.(isEditing);
-    // Cleanup when unmounting (e.g. going back)
+    const isDirty = isFormEditing || isMatrixDirty;
+    onEditingChange?.(isDirty);
     return () => onEditingChange?.(false);
-  }, [isEditing, onEditingChange]);
+  }, [isFormEditing, isMatrixDirty, onEditingChange]);
 
   // Edit Save Handler
   const handleEditSave = (updatedPatient: Patient, updatedAdmissions: Admission[]) => {
       savePatient(updatedPatient);
       saveAdmissions(updatedPatient.id, updatedAdmissions);
-      setIsEditing(false);
+      setIsFormEditing(false);
       if (onUpdate) onUpdate();
   };
 
-  if (isEditing) {
+  const handleTabChange = (tab: DetailTab) => {
+    if (activeTab === tab) return;
+    if (isFormEditing || isMatrixDirty) {
+        if (!confirm('編集中の変更は破棄されますが、移動してもよろしいですか？')) {
+            return;
+        }
+        setIsFormEditing(false);
+        setIsMatrixDirty(false);
+    }
+    setActiveTab(tab);
+  };
+
+  if (isFormEditing) {
       return (
           <PatientEditForm 
               initialPatient={patient}
               initialAdmissions={admissions}
               onSave={handleEditSave}
-              onCancel={() => setIsEditing(false)}
+              onCancel={() => setIsFormEditing(false)}
           />
       );
   }
@@ -56,12 +69,14 @@ export const PatientDetailScreen: React.FC<PatientDetailScreenProps> = ({
     <div className="flex flex-col h-full bg-gray-50 text-lg"> {/* Increased base font */}
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center gap-4 shrink-0 shadow-sm">
-        <button 
-          onClick={onBack}
-          className="p-3 hover:bg-gray-100 rounded-full transition-colors"
-        >
-          <ArrowLeft className="w-6 h-6 text-gray-600" />
-        </button>
+        {onBack && (
+          <button 
+            onClick={onBack}
+            className="p-3 hover:bg-gray-100 rounded-full transition-colors"
+          >
+            <ArrowLeft className="w-6 h-6 text-gray-600" />
+          </button>
+        )}
         <div>
           <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-3">
             {patient.name} 
@@ -75,10 +90,9 @@ export const PatientDetailScreen: React.FC<PatientDetailScreenProps> = ({
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="px-6 pt-4 flex gap-2 border-b border-gray-200 shrink-0">
           <button
-            onClick={() => setActiveTab('basic')}
+            onClick={() => handleTabChange('basic')}
             className={`px-6 py-3 text-lg font-bold rounded-t-lg flex items-center gap-2 border-t border-l border-r border-transparent
               ${activeTab === 'basic' 
                 ? 'bg-white text-blue-600 border-gray-200 border-b-white translate-y-[1px]' 
@@ -88,14 +102,14 @@ export const PatientDetailScreen: React.FC<PatientDetailScreenProps> = ({
             <User className="w-5 h-5" /> 基本情報・入院歴
           </button>
           <button
-            onClick={() => setActiveTab('matrix')}
+            onClick={() => handleTabChange('matrix')}
             className={`px-6 py-3 text-lg font-bold rounded-t-lg flex items-center gap-2 border-t border-l border-r border-transparent
               ${activeTab === 'matrix' 
                 ? 'bg-white text-blue-600 border-gray-200 border-b-white translate-y-[1px]' 
                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}
             `}
           >
-            <Activity className="w-5 h-5" /> 看護必要度マトリクス
+            <Activity className="w-5 h-5" /> 看護必要度評価カレンダー
           </button>
       </div>
 
@@ -110,7 +124,7 @@ export const PatientDetailScreen: React.FC<PatientDetailScreenProps> = ({
                             <FileText className="w-6 h-6" /> 患者基本情報
                         </h3>
                         <button 
-                            onClick={() => setIsEditing(true)}
+                            onClick={() => setIsFormEditing(true)}
                             className="text-blue-600 font-bold hover:underline text-lg"
                         >
                             編集する
@@ -194,7 +208,7 @@ export const PatientDetailScreen: React.FC<PatientDetailScreenProps> = ({
                                         )}
                                     </div>
                                     <div className="text-lg text-gray-600">
-                                        開始病棟: <span className="font-semibold">{adm.initialWard || '-'}</span> / <span className="font-semibold">{adm.initialRoom || '-'}</span>号室
+                                        入院時病棟: <span className="font-semibold">{adm.initialWard || '-'}</span> / <span className="font-semibold">{adm.initialRoom || '-'}</span>号室
                                     </div>
                                 </div>
                             ))}
@@ -210,8 +224,12 @@ export const PatientDetailScreen: React.FC<PatientDetailScreenProps> = ({
             <div className="h-full bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                 <MonthlyMatrixView 
                     patientId={patient.id}
+                    patient={patient}
+                    admissions={admissions}
                     currentDate={currentDate}
                     onDateSelect={setCurrentDate}
+                    onDirtyChange={setIsMatrixDirty}
+                    onPatientRefresh={onUpdate}
                 />
             </div>
         )}

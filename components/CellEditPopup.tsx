@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useLayoutEffect } from 'react';
 import { NursingItemDefinition } from '../types/nursing';
 
 interface CellEditPopupProps {
@@ -38,12 +38,42 @@ export const CellEditPopup: React.FC<CellEditPopupProps> = ({ item, currentValue
     };
   }, [onClose]);
 
-  // Adjust position
-  const style: React.CSSProperties = {
+  const [adjustedStyle, setAdjustedStyle] = React.useState<React.CSSProperties>({
     top: position.y,
     left: position.x,
+    opacity: 0, // Hidden initially for measurement
     zIndex: 1000,
-  };
+  });
+
+  useLayoutEffect(() => {
+    if (popupRef.current) {
+      const rect = popupRef.current.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      
+      let top = position.y;
+      let left = position.x;
+
+      // Adjust Vertical
+      if (rect.bottom > viewportHeight) {
+          // Flip upwards: Position - Height
+          top = position.y - rect.height;
+          // Ensure it doesn't go off top
+          if (top < 0) top = 10; 
+      }
+      
+      // Adjust Horizontal (if needed in future, currently just check right edge)
+      if (rect.right > window.innerWidth) {
+          left = window.innerWidth - rect.width - 10;
+      }
+
+      setAdjustedStyle({
+        top,
+        left,
+        opacity: 1,
+        zIndex: 1000,
+      });
+    }
+  }, [position]);
 
   const handleSelectOption = (val: number) => {
       // If item has assistance, we save both values. 
@@ -56,7 +86,7 @@ export const CellEditPopup: React.FC<CellEditPopupProps> = ({ item, currentValue
     <div 
       ref={popupRef}
       className="fixed bg-white border border-gray-300 shadow-xl rounded-lg p-4 w-80 text-sm animate-in fade-in zoom-in-95 duration-100"
-      style={style}
+      style={adjustedStyle}
     >
       <div className="flex justify-between items-center mb-3 pb-2 border-b border-gray-100">
         <h3 className="font-bold text-gray-800">{item.label}</h3>
