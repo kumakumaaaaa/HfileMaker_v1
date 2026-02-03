@@ -130,7 +130,8 @@ export interface Admission {
  * 日次評価データ
  */
 export interface DailyAssessment {
-  patientId: string;
+  id: string; // YYYY-MM-DD_admissionId
+  admissionId: string;
   date: string; // YYYY-MM-DD
   admissionFeeId: string; // 選択された入院料ID (評価基準)
   

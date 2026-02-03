@@ -1,15 +1,11 @@
 'use client';
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { DailyAssessment, ITEM_DEFINITIONS, NursingItemDefinition } from '../types/nursing';
-import { getMonthlyAssessments, saveAssessment, deleteAssessment } from '../utils/storage';
+import { DailyAssessment, ITEM_DEFINITIONS, NursingItemDefinition, Admission } from '../types/nursing';
+import { getMonthlyAssessments, saveAssessment, deleteAssessment, getCurrentAdmission, getPreviousDayAssessment } from '../utils/storage';
 import { evaluatePatient } from '../utils/evaluation';
 import { CellEditPopup } from './CellEditPopup'; // Import popup
 import { Edit2, Save, X, AlertCircle, Copy, Trash2 } from 'lucide-react'; // Icons
-
-// ... Wait, I should do the util update first or inline it. 
-// Let's look at `utils/storage.ts`.
-
 
 interface MonthlyMatrixViewProps {
   patientId: string;
@@ -39,10 +35,22 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
   });
 
   const [monthlyData, setMonthlyData] = useState<Record<string, DailyAssessment>>({});
+  const [activeAdmission, setActiveAdmission] = useState<Admission | undefined>(undefined);
 
+  // Determine Active Admission for the focused date
   useEffect(() => {
-    setMonthlyData(getMonthlyAssessments(patientId, yearMonth));
-  }, [patientId, yearMonth, lastUpdated]);
+    const admission = getCurrentAdmission(patientId, currentDate);
+    setActiveAdmission(admission);
+  }, [patientId, currentDate]);
+
+  // Load Data for the Active Admission
+  useEffect(() => {
+    if (!activeAdmission) {
+        setMonthlyData({});
+        return;
+    }
+    setMonthlyData(getMonthlyAssessments(activeAdmission.id, yearMonth));
+  }, [activeAdmission, yearMonth, lastUpdated]);
 
   const itemsByCategory = useMemo(() => {
     const grouped = { a: [], b: [], c: [] } as Record<string, typeof ITEM_DEFINITIONS>;
@@ -64,7 +72,6 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
   useEffect(() => {
       onDirtyChange?.(isDirty);
       
-      // Browser unload protection
       const handleBeforeUnload = (e: BeforeUnloadEvent) => {
           if (isDirty) {
               e.preventDefault();
@@ -86,8 +93,6 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
       setEditingDate(null);
       setPendingChanges({});
       setFocusedItemId(null);
-      // We don't need to call onDirtyChange(false) here because the dependency above will trigger
-      // but if we unmount we might want to ensure it's cleared.
   }, [patientId]);
 
   // Popover State
@@ -125,6 +130,23 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
 
   // Start Editing
   const handleStartEdit = (date: string) => {
+    // Check if we have an active admission for this date (or at least one for the current context)
+    // Note: If user clicks edit on a date OUTSIDE the active admission range, specific check?
+    // Since we only load data for `activeAdmission`, creating data for a date outside its range is technically possible but logic wise wrong if we strictly enforce.
+    // Ideally we should check if `date` is within `activeAdmission`.
+    
+    if (!activeAdmission) {
+        alert('この日付に該当する入院記録がありません。入院日を確認してください。');
+        return;
+    }
+    
+    // Strict date check?
+    // If admissionDate > date or (dischargeDate && dischargeDate < date), warn?
+    if (date < activeAdmission.admissionDate || (activeAdmission.dischargeDate && date > activeAdmission.dischargeDate)) {
+        alert('入院期間外の日付は編集できません。');
+        return;
+    }
+
     if (editingDate && editingDate !== date) {
         if (!confirm('他の日の編集を破棄してこの日を編集しますか？')) return;
     }
@@ -137,8 +159,12 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
     // Initialize scores
     const { items, scoreA, scoreB, scoreC } = initialDataToState(initialItems, admissionFeeId);
     
+    // ID generation logic moved to storage? Or just use format.
+    const id = `${date}_${activeAdmission.id}`;
+
     const initialAssessment: DailyAssessment = {
-      patientId,
+      id,
+      admissionId: activeAdmission.id,
       date,
       items,
       admissionFeeId,
@@ -148,7 +174,6 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
 
     setPendingChanges({ [date]: initialAssessment });
     setEditingDate(date);
-    // Focus first item
     if (allItems.length > 0) {
       setFocusedItemId(allItems[0].id);
     }
@@ -156,14 +181,24 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
 
   // Copy from Previous Day
   const handleCopyPrevious = (targetDate: string) => {
-      // Find previous date
+      if (!activeAdmission) return;
+
       const idx = dateList.indexOf(targetDate);
       if (idx <= 0) {
           alert('前日のデータがありません');
           return;
       }
       const prevDate = dateList[idx - 1];
-      const prevData = monthlyData[prevDate];
+      
+      // Try to get from loaded monthly data first (optimization)
+      let prevData = monthlyData[prevDate];
+      
+      // If not in current month view (e.g. 1st of month), fetch from storage
+      if (!prevData) {
+          // Sync fetch wrapper? getPreviousDayAssessment requires admissionId
+           const fetched = getPreviousDayAssessment(activeAdmission.id, targetDate); // This actually fetches YESTERDAY of target
+           if (fetched) prevData = fetched;
+      }
       
       if (!prevData) {
           alert('前日のデータが登録されていません');
@@ -174,14 +209,13 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
           if (!confirm('他の日の編集を破棄してこの日を編集しますか？')) return;
       }
       
-      // Deep copy previous data items
       const newItems = { ...prevData.items };
-      // Copy assist values too? Yes, items includes them.
-      
       const { scoreA, scoreB, scoreC } = initialDataToState(newItems, prevData.admissionFeeId);
       
+      const id = `${targetDate}_${activeAdmission.id}`;
       const newAssessment: DailyAssessment = {
-          patientId,
+          id,
+          admissionId: activeAdmission.id,
           date: targetDate,
           items: newItems,
           admissionFeeId: prevData.admissionFeeId,
@@ -209,43 +243,33 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
   // Save Editing
   const handleSaveEdit = () => {
     const dates = Object.keys(pendingChanges);
-    // Since auto-fill is gone, multi-day save is rare (only if we manually supported it in code but logic limits to 1).
-    // Just save all pending.
-
-    // Save all pending
     dates.forEach(date => {
         saveAssessment(pendingChanges[date]);
     });
     
-    // Force reload local by merging pending into monthly
-    setMonthlyData(prev => {
-        const next = { ...prev };
-        dates.forEach(d => {
-            next[d] = pendingChanges[d];
-        });
-        return next;
-    });
+    // Reload data to reflect persistence (and ensure consistent state)
+    if (activeAdmission) {
+        setMonthlyData(getMonthlyAssessments(activeAdmission.id, yearMonth));
+    }
     
     setEditingDate(null);
     setPendingChanges({});
-    setFocusedItemId(null);
     setFocusedItemId(null);
   };
 
   // Delete Data
   const handleDelete = (date: string) => {
+      if (!activeAdmission) return;
       if (!confirm(`${date} のデータを削除しますか？`)) return;
       
-      deleteAssessment(patientId, date);
+      deleteAssessment(activeAdmission.id, date);
       
-      // Update local state
       setMonthlyData(prev => {
           const next = { ...prev };
           delete next[date];
           return next;
       });
       
-      // Close edit if needed
       if (editingDate === date) {
           handleCancelEdit();
       }

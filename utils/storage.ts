@@ -184,35 +184,35 @@ export const getCurrentAdmission = (patientId: string, date: string): Admission 
   });
 };
 
-// 評価データ保存キーの生成
-const getAssessmentKey = (patientId: string, date: string) => {
-  return `${STORAGE_KEY_ASSESSMENTS_PREFIX}${patientId}_${date}`;
+// 評価データ保存キーの生成 (Admission IDベースに変更)
+const getAssessmentKey = (admissionId: string, date: string) => {
+  return `${STORAGE_KEY_ASSESSMENTS_PREFIX}${admissionId}_${date}`;
 };
 
 // 評価データ保存
 export const saveAssessment = (assessment: DailyAssessment) => {
   if (typeof window === 'undefined') return;
-  const key = getAssessmentKey(assessment.patientId, assessment.date);
+  const key = getAssessmentKey(assessment.admissionId, assessment.date);
   localStorage.setItem(key, JSON.stringify(assessment));
 };
 
 // 評価データ削除
-export const deleteAssessment = (patientId: string, date: string) => {
+export const deleteAssessment = (admissionId: string, date: string) => {
   if (typeof window === 'undefined') return;
-  const key = getAssessmentKey(patientId, date);
+  const key = getAssessmentKey(admissionId, date);
   localStorage.removeItem(key);
 };
 
 // 評価データ取得
-export const getAssessment = (patientId: string, date: string): DailyAssessment | null => {
+export const getAssessment = (admissionId: string, date: string): DailyAssessment | null => {
   if (typeof window === 'undefined') return null;
-  const key = getAssessmentKey(patientId, date);
+  const key = getAssessmentKey(admissionId, date);
   const stored = localStorage.getItem(key);
   return stored ? JSON.parse(stored) : null;
 };
 
-// 前日のデータを取得 (日付文字列操作)
-export const getPreviousDayAssessment = (patientId: string, currentDate: string): DailyAssessment | null => {
+// 前日のデータを取得
+export const getPreviousDayAssessment = (admissionId: string, currentDate: string): DailyAssessment | null => {
   if (typeof window === 'undefined') return null;
   
   const date = new Date(currentDate);
@@ -222,15 +222,17 @@ export const getPreviousDayAssessment = (patientId: string, currentDate: string)
   date.setDate(date.getDate() - 1);
   const prevDateStr = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
   
-  return getAssessment(patientId, prevDateStr);
+  return getAssessment(admissionId, prevDateStr);
 };
 
-// 月次データの取得 (指定月の全データを収集)
-export const getMonthlyAssessments = (patientId: string, yearMonth: string): Record<string, DailyAssessment> => {
+// 月次データの取得 (指定月の全データを収集 - Admission単位)
+export const getMonthlyAssessments = (admissionId: string, yearMonth: string): Record<string, DailyAssessment> => {
   if (typeof window === 'undefined') return {};
 
   const assessments: Record<string, DailyAssessment> = {};
-  const prefix = `${STORAGE_KEY_ASSESSMENTS_PREFIX}${patientId}_${yearMonth}`;
+  // Prefix: assessment_admissionId_YYYY-MM
+  // Note: key format is prefix_admissionId_YYYY-MM-DD
+  const prefix = `${STORAGE_KEY_ASSESSMENTS_PREFIX}${admissionId}_${yearMonth}`;
 
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
