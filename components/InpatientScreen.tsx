@@ -14,6 +14,7 @@ export const InpatientScreen: React.FC = () => {
   const [isResizing, setIsResizing] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [displayDate, setDisplayDate] = useState<string>(''); // Calendar view date
+  const [listRefreshTrigger, setListRefreshTrigger] = useState(0); // Trigger to refresh patient list indicators
 
   // Resize Handler
   useEffect(() => {
@@ -85,6 +86,7 @@ export const InpatientScreen: React.FC = () => {
             allAdmissions={allAdmissions}
             selectedPatientId={selectedPatientId}
             onSelectPatient={handlePatientSelect}
+            refreshTrigger={listRefreshTrigger}
         />
       </div>
 
@@ -99,15 +101,13 @@ export const InpatientScreen: React.FC = () => {
                   initialTab="matrix"
                   hideHeader={true}
                   onUpdate={() => {
-                      // Refresh needed? Use existing update mechanisms or force update
-                      // InpatientScreen loads data on mount. 
-                      // If we edit data in DetailScreen, we might want to refresh the List.
-                      // We can add a refresh trigger to storage utils or just context.
-                      // For now, reload keys or simple callback.
+                      // Refresh patient/admission data
                       const pt = getPatients();
                       const allAdm = getAdmissions(null);
                       setPatients(pt);
                       setAllAdmissions(allAdm);
+                      // Trigger refresh of list indicators (e.g., "未" icon)
+                      setListRefreshTrigger(prev => prev + 1);
                   }}
               />
           ) : (

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Patient, Admission, Ward, Room } from '../types/nursing';
-import { getPatientLocationAndStatus } from '../utils/patientHelper';
-import { getWards, getRooms } from '../utils/storage';
+import { getPatientLocationAndStatus, getActiveAdmission } from '../utils/patientHelper';
+import { getWards, getRooms, getAssessmentsByDate } from '../utils/storage';
 import { Search, Filter, Calendar, Building2, BedDouble, User, Check } from 'lucide-react';
 
 interface Props {
@@ -9,11 +9,12 @@ interface Props {
   allAdmissions: Admission[];
   selectedPatientId: string | null;
   onSelectPatient: (patient: Patient) => void;
+  refreshTrigger?: number; // Increment to trigger re-fetch of assessment data
 }
 
 const STORAGE_KEY_FILTER = 'nursing_patient_list_filter_v1';
 
-export const AdvancedPatientList: React.FC<Props> = ({ patients, allAdmissions, selectedPatientId, onSelectPatient }) => {
+export const AdvancedPatientList: React.FC<Props> = ({ patients, allAdmissions, selectedPatientId, onSelectPatient, refreshTrigger }) => {
     // Current Date Default
     const todayStr = useMemo(() => {
         const now = new Date();
@@ -31,6 +32,9 @@ export const AdvancedPatientList: React.FC<Props> = ({ patients, allAdmissions, 
     // Filter State
     const [selectedWards, setSelectedWards] = useState<string[]>([]);
     const [selectedRooms, setSelectedRooms] = useState<string[]>([]);
+
+    // Entered Assessment IDs (for "未" indicator)
+    const [enteredAdmissionIds, setEnteredAdmissionIds] = useState<string[]>([]);
 
     // Computed: Admissions Grouped by Patient
     const admissionsByPatient = useMemo(() => {
@@ -58,6 +62,11 @@ export const AdvancedPatientList: React.FC<Props> = ({ patients, allAdmissions, 
             }
         }
     }, []);
+
+    // Fetch entered status when date changes or refresh is triggered
+    useEffect(() => {
+        setEnteredAdmissionIds(getAssessmentsByDate(targetDate));
+    }, [targetDate, refreshTrigger]);
 
     // Save Filter
     useEffect(() => {
@@ -261,7 +270,30 @@ export const AdvancedPatientList: React.FC<Props> = ({ patients, allAdmissions, 
                                 className={`p-3 cursor-pointer transition-colors hover:bg-blue-50 ${selectedPatientId === p.original.id ? 'bg-blue-100 ring-2 ring-inset ring-blue-400' : ''}`}
                             >
                                 <div className="flex justify-between items-start mb-1">
-                                    <span className="font-bold text-gray-800 text-sm">{p.original.name}</span>
+                                    <div className="flex items-center">
+                                        <span className="font-bold text-gray-800 text-base">{p.original.name}</span>
+                                        {(() => {
+                                           // Priority 1: Excluded from assessment
+                                           if (p.original.excludeFromAssessment) {
+                                               return (
+                                                   <span className="ml-2 bg-orange-400 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full font-bold pt-[1px]">
+                                                       外
+                                                   </span>
+                                               );
+                                           }
+                                           // Priority 2: Unentered (only if admitted)
+                                           if (!p.status || p.status === '退院' || p.status === '退院済') return null;
+                                           const adm = getActiveAdmission(allAdmissions.filter(a => a.patientId === p.original.id), targetDate);
+                                           if (adm && !enteredAdmissionIds.includes(adm.id)) {
+                                               return (
+                                                   <span className="ml-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full font-bold pt-[1px]">
+                                                       未
+                                                   </span>
+                                               );
+                                           }
+                                           return null;
+                                        })()}
+                                    </div>
                                     <span className="text-xs font-mono text-gray-400">{p.original.identifier}</span>
                                 </div>
                                 <div className="flex items-center gap-2 text-xs text-gray-500">

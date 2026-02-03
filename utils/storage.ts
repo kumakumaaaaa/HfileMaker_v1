@@ -362,3 +362,28 @@ export const getMonthlyAssessments = (admissionId: string, yearMonth: string): R
   }
   return assessments;
 };
+
+// 指定日の全評価データを取得 (AdmissionIDのリストを返す - リスト表示用)
+export const getAssessmentsByDate = (date: string): string[] => {
+  if (typeof window === 'undefined') return [];
+  
+  const admissionIds: string[] = [];
+  // Prefix: hfile_assessment_
+  // Suffix: _YYYY-MM-DD
+  const suffix = `_${date}`;
+  const prefix = STORAGE_KEY_ASSESSMENTS_PREFIX;
+
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    // Cheap check: must start with prefix and end with suffix
+    if (key && key.startsWith(prefix) && key.endsWith(suffix)) {
+      // Key format: prefix + admissionId + suffix
+      // Extract admissionId
+      const idPart = key.slice(prefix.length, key.length - suffix.length);
+      if (idPart) {
+        admissionIds.push(idPart);
+      }
+    }
+  }
+  return admissionIds;
+};

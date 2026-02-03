@@ -348,6 +348,9 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
     setEditingDate(null);
     setPendingChanges({});
     setFocusedItemId(null);
+    
+    // Notify parent to refresh list indicators
+    onPatientRefresh?.();
   };
 
   // Delete Data
