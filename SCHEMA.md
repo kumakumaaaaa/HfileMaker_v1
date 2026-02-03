@@ -84,16 +84,30 @@ erDiagram
 
 システムの堅牢性と拡張性を高めるため、将来的には以下のテーブル導入が推奨されます。
 
-### 1. 病棟・病室マスタ (Ward/Room Master)
-現在は "一般病棟" や "101" という文字列を直接保存していますが、マスタテーブルを作成して管理すべきです。
-*   **Ward (病棟)**: `id`, `name`, `type` (病棟種別)
-*   **Room (病室)**: `id`, `wardId`, `roomNumber`, `bedCount` (ベッド数)
+### 1. 病棟・病室マスタ (Ward/Room Master) - 実装済み
+病棟・病室のマスタデータを管理します。病室は必ず特定の病棟に紐づきます。
 
-### 2. 転棟履歴 (Transfer History)
-現在は `Admission` テーブルに `initialWard` (入院時の病棟) しか持っていません。入院中に病棟移動（例：一般病棟 → ICU）があった場合を記録するため、履歴テーブルが必要です。
-*   **Transfer**: `id`, `admissionId`, `fromWardId`, `toWardId`, `transferDate`
+| テーブル | フィールド | 説明 |
+|---|---|---|
+| Ward | `code` (PK) | 病棟ID (W001など) |
+| Ward | `name` | 病棟名 |
+| Room | `code` (PK) | 病室ID |
+| Room | `wardCode` (FK) | 所属病棟ID (必須) |
+| Room | `name` | 病室名 |
 
-### 3. ユーザー管理 (User/Nurse Management)
-「誰が」評価を行ったかを記録するために必要です。
-*   **User**: `id`, `name`, `role` (権限), `passwordHash`
-*   `DailyAssessment` テーブルに `created_by`, `updated_by` フィールドを追加して記録します。
+### 2. 転棟履歴 (Movement) - 実装済み
+`Admission` の `movements` 配列にて管理。入院後の病棟移動や外泊を記録。
+*   **type**: `transfer_ward` (転棟), `transfer_room` (転床), `overnight` (外泊)
+*   **date**: 転棟・外泊開始日
+*   **ward/room**: 移動先の病棟・病室
+
+### 3. ユーザー管理 (UserAccount) - 実装済み
+システム利用者を管理するマスタテーブルです。
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `id` | string (PK) | 内部ID (UUID) |
+| `userId` | string | ログインID |
+| `name` | string | ユーザー名 |
+| `role` | enum | '入力者', '評価者', '管理者' |
+| `authority` | enum | '一般アカウント', '施設管理者アカウント', 'システム管理者アカウント' |
