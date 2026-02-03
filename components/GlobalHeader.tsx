@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Users, BedDouble, Settings, Building2 } from 'lucide-react';
+import { LayoutDashboard, Users, BedDouble, Settings, Building2, LogOut } from 'lucide-react';
 
 export type TabType = 'home' | 'inpatients' | 'patients' | 'wards' | 'settings';
 
@@ -45,8 +45,29 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ activeTab, onTabChan
         })}
       </nav>
       
-      <div className="ml-auto flex items-center gap-4 text-xs text-gray-400">
-        Demo User
+      <div className="ml-auto relative group">
+        <button className="flex items-center justify-center w-10 h-10 rounded-full bg-indigo-600 text-white font-bold text-lg shadow-sm hover:bg-indigo-700 transition">
+            看
+        </button>
+
+        {/* Hover Dropdown */}
+        <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-100 p-4 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 transform origin-top-right">
+            <div className="flex items-center gap-3 mb-4">
+                <div className="flex items-center justify-center w-12 h-12 rounded-full bg-indigo-100 text-indigo-700 font-bold text-xl">
+                    看
+                </div>
+                <div>
+                    <div className="font-bold text-gray-800 text-lg">看護 太郎</div>
+                    <div className="text-xs text-gray-500">管理者アカウント</div>
+                </div>
+            </div>
+            
+            <div className="border-t border-gray-100 my-2"></div>
+            
+            <button className="w-full flex items-center gap-2 p-2 text-red-600 hover:bg-red-50 rounded transition-colors text-sm font-bold">
+                <LogOut className="w-4 h-4" /> ログアウト
+            </button>
+        </div>
       </div>
     </header>
   );
