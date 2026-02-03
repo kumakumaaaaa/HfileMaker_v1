@@ -30,15 +30,15 @@ erDiagram
     }
 
     DailyAssessment {
-        string id PK "ユニークID (例: yyyy-mm-dd_patientId)"
-        string patientId FK "参照: Patient.id"
+        string id PK "ユニークID"
+        string admissionId FK "参照: Admission.id"
         date date "評価実施日"
         json records "評価データ (Key-Value形式)"
     }
 
     %% リレーションシップ
     Patient ||--o{ Admission : "has history of (入院歴)"
-    Patient ||--o{ DailyAssessment : "has records of (評価記録)"
+    Admission ||--o{ DailyAssessment : "has records of (評価記録)"
 ```
 
 ## テーブル定義
@@ -75,7 +75,7 @@ erDiagram
 
 | フィールド名 | 型 | 説明 |
 |---|---|---|
-| `patientId` | string (FK) | `Patient` テーブルの `id` への外部キー参照。 |
+| `admissionId` | string (FK) | `Admission` テーブルの `id` への外部キー参照。 |
 | `date` | string | 評価対象日 (YYYY-MM-DD)。 |
 | `records` | object | 評価項目のデータを Key-Value 形式で保持するJSONオブジェクト。 |
 | `records[itemId]` | any | 各項目の評価値 (チェックボックスならboolean、選択肢なら数値/文字列)。 |

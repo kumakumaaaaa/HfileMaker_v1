@@ -6,6 +6,7 @@ import { InpatientScreen } from '../components/InpatientScreen';
 import { DashboardScreen } from '../components/DashboardScreen';
 import { WardsScreen } from '../components/WardsScreen';
 import { PatientManagementScreen } from '../components/PatientManagementScreen';
+import { MasterSettingsScreen } from '../components/MasterSettingsScreen';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
@@ -33,9 +34,7 @@ export default function Home() {
             <PatientManagementScreen onEditingChange={setIsNavigationBlocked} />
         )}
         {activeTab === 'wards' && <WardsScreen />}
-        {activeTab === 'settings' && (
-             <div className="p-8 text-center text-gray-400">設定画面 (Coming Soon)</div>
-        )}
+        {activeTab === 'settings' && <MasterSettingsScreen />}
       </main>
     </div>
   );

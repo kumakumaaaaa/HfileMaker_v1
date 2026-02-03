@@ -30,6 +30,7 @@ export const PatientManagementScreen: React.FC<PatientManagementScreenProps> = (
   // Notify parent of editing state
   useEffect(() => {
       onEditingChange?.(isCreating);
+      return () => onEditingChange?.(false);
   }, [isCreating, onEditingChange]);
 
   // Pagination
@@ -156,13 +157,21 @@ export const PatientManagementScreen: React.FC<PatientManagementScreenProps> = (
               onEditingChange={onEditingChange}
               onBack={() => setSelectedPatient(null)}
               onUpdate={() => {
-                  // Refresh data when returning from detail (in case of edits there)
-                  setPatients(getPatients());
+                  // Refresh data and update selected patient reference
+                  const newPatients = getPatients();
+                  setPatients(newPatients);
+                  
+                  // CRITICAL: Also update the currently selected patient object so DetailScreen gets new props
+                  const updatedSelected = newPatients.find(p => p.id === selectedPatient.id);
+                  if (updatedSelected) {
+                      setSelectedPatient(updatedSelected);
+                  }
+
                    const admMap: Record<string, Admission[]> = {};
-                    getPatients().forEach(p => {
-                        admMap[p.id] = getAdmissions(p.id);
-                    });
-                    setAdmissionsMap(admMap);
+                   newPatients.forEach(p => {
+                       admMap[p.id] = getAdmissions(p.id);
+                   });
+                   setAdmissionsMap(admMap);
               }}
           />
       );
@@ -271,7 +280,6 @@ export const PatientManagementScreen: React.FC<PatientManagementScreenProps> = (
                         const admStr = latestAdm 
                             ? `${latestAdm.admissionDate} 〜 ${latestAdm.dischargeDate || '入院中'}`
                             : '記録なし';
-                        const wardStr = latestAdm ? `${latestAdm.initialWard || '-'} / ${latestAdm.initialRoom || '-'}` : '-';
 
                         return (
                             <tr 
@@ -301,9 +309,6 @@ export const PatientManagementScreen: React.FC<PatientManagementScreenProps> = (
                                     <div className="flex flex-col">
                                         <div className="font-medium text-gray-700 flex items-center gap-2">
                                             <Calendar className="w-5 h-5 text-gray-400" /> {admStr}
-                                        </div>
-                                        <div className="text-base text-gray-500 mt-1 ml-7">
-                                            病棟: {wardStr}
                                         </div>
                                     </div>
                                 </td>
