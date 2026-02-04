@@ -245,7 +245,12 @@ export const PatientDetailScreen: React.FC<PatientDetailScreenProps> = ({
                                                     }`} />
                                                     
                                                     <div className="text-base text-gray-700">
-                                                        <div className="font-mono text-sm text-gray-500 mb-0.5">{mov.date}</div>
+                                                        <div className="font-mono text-sm text-gray-500 mb-0.5">
+                                                            {mov.type === 'overnight' 
+                                                                ? `${mov.date} 〜 ${mov.endDate || '(継続中)'}`
+                                                                : mov.date
+                                                            }
+                                                        </div>
                                                         {mov.type === 'transfer_ward' && (
                                                             <span><span className="text-blue-600 font-bold">転棟</span>：{mov.ward}{mov.room ? ` / ${mov.room}号室` : ''}</span>
                                                         )}
@@ -253,7 +258,7 @@ export const PatientDetailScreen: React.FC<PatientDetailScreenProps> = ({
                                                             <span><span className="text-green-600 font-bold">転床</span>：{mov.ward ? `${mov.ward} / ` : ''}{mov.room}号室</span>
                                                         )}
                                                         {mov.type === 'overnight' && (
-                                                            <span><span className="text-orange-600 font-bold">外泊</span>：{mov.endDate ? `〜${mov.endDate}` : '〜(継続中)'}</span>
+                                                            <span className="text-orange-600 font-bold">外泊</span>
                                                         )}
                                                     </div>
                                                 </div>
