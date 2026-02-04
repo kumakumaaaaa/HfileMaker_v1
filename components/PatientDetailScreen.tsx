@@ -272,7 +272,7 @@ export const PatientDetailScreen: React.FC<PatientDetailScreenProps> = ({
                                         {adm.dischargeDate ? (
                                             <span className="font-mono text-lg text-gray-800 font-bold">{adm.dischargeDate}</span>
                                         ) : (
-                                            <span className="text-gray-400 text-lg font-mono">--------------------</span>
+                                            <span className="text-gray-400 text-base">（未定）</span>
                                         )}
                                     </div>
                                 </div>
