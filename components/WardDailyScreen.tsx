@@ -493,10 +493,10 @@ export const WardDailyScreen: React.FC<WardDailyScreenProps> = ({ onNavigateToPa
                                                                 e.stopPropagation();
                                                                 onNavigateToPatient?.(row.patient.id);
                                                             }}
-                                                            className="text-blue-400 opacity-0 group-hover:opacity-100 hover:text-blue-600 transition-all p-0.5 rounded hover:bg-blue-50"
+                                                            className="text-gray-400 hover:text-blue-600 transition-all p-1 rounded hover:bg-blue-50"
                                                             title="患者詳細(カレンダー)へ移動"
                                                         >
-                                                            <ExternalLink className="w-3 h-3" />
+                                                            <ExternalLink className="w-5 h-5" />
                                                         </button>
                                                     </div>
                                                 </div>
