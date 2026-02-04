@@ -743,9 +743,14 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                 const isFuture = date > todayStr;
 
                 // Admission Validity & Excluded Check
+                // Admission Validity & Excluded Check
                 const isValid = isValidDate(date);
+                
+                const { status } = getPatientLocationAndStatus(admissions, date);
+                const isOvernight = status?.includes('外泊');
+                
                 // CRITICAL UPDATE: Editing is disabled if patient is Excluded, even if date is valid
-                const isEditable = isValid && !isFuture && !patient?.excludeFromAssessment;
+                const isEditable = isValid && !isFuture && !patient?.excludeFromAssessment && !isOvernight;
                 
                 // Data
                 const pending = pendingChanges[date];
@@ -761,19 +766,21 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                   <th 
                     key={date} 
                     className={`
-                      p-2 border border-gray-300 min-w-[60px] transition-colors relative group
-                      ${isExcluded ? 'bg-red-50' : ''}
-                      ${isEditing ? 'bg-yellow-50 border-yellow-400 border-2 border-b-0' : ''}
-                      ${!isEditing && isSelected ? 'bg-blue-600 text-white' : ''}
-                      ${!isEditing && !isSelected && !isExcluded ? 'bg-gray-100 hover:bg-gray-200' : ''}
-                      ${!isEditing && isSevere ? 'bg-pink-100 text-red-800' : ''}
-                      ${!isEditable ? 'text-gray-400 cursor-not-allowed' : ''}
-                      ${!isEditable && !isExcluded ? 'bg-gray-200' : ''} 
+                      border border-gray-300 p-2 min-w-[60px] max-w-[60px] z-50
+                      ${isEditing 
+                          ? 'bg-yellow-50 border-yellow-400 border-2 border-b-0' 
+                          : isSelected 
+                              ? 'bg-blue-600 text-white' 
+                              : !isEditable 
+                                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                                  : 'bg-gray-100 hover:bg-gray-200'
+                      }
+                      ${!isEditing && !isSelected && isSevere ? 'bg-pink-100 text-red-800' : ''}
                     `}
                     style={{ position: 'sticky', top: 0, zIndex: 50 }}
-                    onClick={() => !isEditing && isEditable && onDateSelect(date)}
+                    onClick={() => !isEditing && onDateSelect(date)}
                   >
-                    <div className={`flex flex-col items-center gap-1 ${!isEditable ? 'opacity-50' : ''}`}>
+                    <div className={`flex flex-col items-center gap-1 ${!isEditable && !isSelected ? 'opacity-50' : ''}`}>
                       <span>{day}</span>
                       {isEditing ? (
                          <div className="flex gap-1 z-50 relative items-center"> 
@@ -824,7 +831,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                {dateList.map(date => {
                  const { ward } = getPatientLocationAndStatus(admissions, date);
                  return (
-                   <td key={date} className="border border-gray-300 p-2 text-center text-xs whitespace-nowrap bg-white text-gray-600">
+                   <td key={date} className="border border-gray-300 p-2 text-center text-base whitespace-nowrap bg-white text-gray-600">
                      {ward}
                    </td>
                  );
@@ -840,8 +847,8 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                {dateList.map(date => {
                  const { room } = getPatientLocationAndStatus(admissions, date);
                  return (
-                   <td key={date} className="border border-gray-300 p-2 text-center text-xs font-mono bg-white text-gray-600">
-                     {room !== '-' ? `${room}` : '-'}
+                   <td key={date} className="border border-gray-300 p-2 text-center text-base font-mono bg-white text-gray-600">
+                     {room && room !== '-' ? `${room}` : ''}
                    </td>
                  );
                })}
@@ -864,7 +871,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                  if (status.includes('外泊')) { statusColor = 'text-purple-600 font-bold'; bg = 'bg-purple-50'; }
                  
                  return (
-                   <td key={date} className={`border border-gray-300 border-b-2 border-b-gray-300 p-2 text-center text-xs whitespace-nowrap ${bg} ${statusColor}`}>
+                   <td key={date} className={`border border-gray-300 border-b-2 border-b-gray-300 p-2 text-center text-base whitespace-nowrap ${bg} ${statusColor}`}>
                      {status || '-'}
                    </td>
                  );
@@ -888,7 +895,9 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                       const now = new Date();
                       const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
                       const isFuture = date > todayStr;
-                      const isEditable = isValid && !isFuture && !patient?.excludeFromAssessment; // Also check Excluded
+                      const { status } = getPatientLocationAndStatus(admissions, date);
+                      const isOvernight = status?.includes('外泊');
+                      const isEditable = isValid && !isFuture && !patient?.excludeFromAssessment && !isOvernight; // Check Excluded & Overnight
 
                       // Data
                       const pending = pendingChanges[date];

@@ -41,7 +41,7 @@ export const getPatientLocationAndStatus = (admissions: Admission[], date: strin
             if (m.date === date) status = '転床';
         } else if (m.type === 'overnight') {
             if (m.date === date) status = '外泊'; 
-            else if (m.endDate && date > m.date && date <= m.endDate) status = '外泊中';
+            else if (m.endDate && date > m.date && date <= m.endDate) status = '外泊';
         }
     }
     
