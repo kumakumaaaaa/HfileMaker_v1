@@ -784,8 +784,8 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                       <span>{day}</span>
                       {isEditing ? (
                          <div className="flex gap-1 z-50 relative items-center"> 
-                           <button onClick={handleSaveEdit} className="p-1 bg-green-500 text-white rounded hover:bg-green-600" title="保存"><Save className="w-3 h-3"/></button>
-                           <button onClick={handleCancelEdit} className="p-1 bg-gray-500 text-white rounded hover:bg-gray-600" title="キャンセル"><X className="w-3 h-3"/></button>
+                           <button onClick={handleSaveEdit} className="p-1 bg-green-500 text-white rounded hover:bg-green-600" title="保存"><Save className="w-4 h-4"/></button>
+                           <button onClick={handleCancelEdit} className="p-1 bg-gray-500 text-white rounded hover:bg-gray-600" title="キャンセル"><X className="w-4 h-4"/></button>
                          </div>
                       ) : (
                         <div className="h-5 flex gap-1 items-center justify-center">
@@ -796,7 +796,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                                     className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
                                     title="前日のデータをコピーして編集"
                                 >
-                                    <Copy className="w-3 h-3" />
+                                    <Copy className="w-4 h-4" />
                                 </button>
                              )}
                              {/* Edit Button */}
@@ -806,7 +806,7 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                                     className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
                                     title="編集"
                                  >
-                                    <Edit2 className="w-3 h-3" />
+                                    <Edit2 className="w-4 h-4" />
                                  </button>
                              )}
                         </div>
