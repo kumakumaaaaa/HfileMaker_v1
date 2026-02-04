@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { GlobalHeader, TabType } from '../components/GlobalHeader';
 import { InpatientScreen } from '../components/InpatientScreen';
 import { DashboardScreen } from '../components/DashboardScreen';
-import { WardsScreen } from '../components/WardsScreen';
+import { WardDailyScreen } from '../components/WardDailyScreen';
 import { PatientManagementScreen } from '../components/PatientManagementScreen';
 import { MasterSettingsScreen } from '../components/MasterSettingsScreen';
 
@@ -33,7 +33,7 @@ export default function Home() {
         {activeTab === 'patients' && (
             <PatientManagementScreen onEditingChange={setIsNavigationBlocked} />
         )}
-        {activeTab === 'wards' && <WardsScreen />}
+        {activeTab === 'wards' && <WardDailyScreen />}
         {activeTab === 'settings' && <MasterSettingsScreen />}
       </main>
     </div>

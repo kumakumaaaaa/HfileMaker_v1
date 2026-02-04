@@ -7,45 +7,43 @@ import { NursingAssessment, NURSING_STANDARDS, ITEM_DEFINITIONS } from '../types
  * @param assessment 患者の評価データ (各項目の入力値 items 等)
  * @returns 基準を満たす場合は true、満たさない場合は false
  */
-export function evaluatePatient(admissionFeeId: string, assessment: NursingAssessment): boolean {
-  // アイテムごとのスコア計算
+/**
+ * 各項目のスコアを計算する
+ * @param items 入力項目
+ * @returns { a: number, b: number, c: number }
+ */
+export function calculateScores(items: Record<string, boolean | number>) {
   let calculatedScoreA = 0;
   let calculatedScoreB = 0;
   let calculatedScoreC = 0;
-
-  const items = assessment.items || {};
 
   ITEM_DEFINITIONS.forEach(def => {
     const value = items[def.id];
     
     if (def.category === 'a') {
-      // A項目: チェックされていれば定義された点数を加算
-      if (value === true) {
-        calculatedScoreA += def.points;
-      }
+      if (value === true) calculatedScoreA += def.points;
     } else if (def.category === 'c') {
-      // C項目: チェックされていれば定義された点数を加算
-      if (value === true) {
-        calculatedScoreC += def.points;
-      }
+      if (value === true) calculatedScoreC += def.points;
     } else if (def.category === 'b') {
-      // B項目
-      // value は選択された状態(0, 1, 2)
       if (typeof value === 'number') {
         let points = value;
-
-        // 介助実施の概念がある項目は、介助フラグ(1 or 0)を掛け合わせる
         if (def.hasAssistance) {
            const assistValue = items[`${def.id}_assist`];
-           // 介助実施(1)でなければ0点になる
            const multiplier = (typeof assistValue === 'number') ? assistValue : 0;
            points = points * multiplier;
         }
-
         calculatedScoreB += points;
       }
     }
   });
+
+  return { a: calculatedScoreA, b: calculatedScoreB, c: calculatedScoreC };
+}
+
+export function evaluatePatient(admissionFeeId: string, assessment: NursingAssessment): boolean {
+  // アイテムごとのスコア計算
+  const items = assessment.items || {};
+  const { a: calculatedScoreA, b: calculatedScoreB, c: calculatedScoreC } = calculateScores(items);
 
   // assessmentオブジェクトに計算済みスコアがあればそれを優先（上書き等の場合）、なければ計算値を使用
   const scoreA = assessment.scoreA ?? calculatedScoreA;
