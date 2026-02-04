@@ -11,6 +11,8 @@ import { MasterSettingsScreen } from '../components/MasterSettingsScreen';
 export default function Home() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [isNavigationBlocked, setIsNavigationBlocked] = useState(false);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [patientInitialTab, setPatientInitialTab] = useState<'basic' | 'matrix'>('basic');
 
   const handleTabChange = (newTab: TabType) => {
     if (isNavigationBlocked) {
@@ -20,6 +22,23 @@ export default function Home() {
       setIsNavigationBlocked(false);
     }
     setActiveTab(newTab);
+    // Reset selection and tab preference when switching main tabs manually
+    if (newTab !== 'patients') {
+        setSelectedPatientId(null);
+    }
+    setPatientInitialTab('basic'); 
+  };
+
+  const handleNavigateToPatient = (patientId: string) => {
+      // 1. If blocked, check first (reusing logic or simplified for now)
+      if (isNavigationBlocked) {
+          if (!window.confirm('編集中のデータは破棄されますが、移動してもよろしいですか？')) return;
+          setIsNavigationBlocked(false);
+      }
+      // 2. Switch Tab & Set Patient & Set Matrix Mode
+      setActiveTab('patients');
+      setSelectedPatientId(patientId);
+      setPatientInitialTab('matrix');
   };
 
   return (
@@ -31,9 +50,18 @@ export default function Home() {
         {activeTab === 'home' && <DashboardScreen />}
         {activeTab === 'inpatients' && <InpatientScreen />}
         {activeTab === 'patients' && (
-            <PatientManagementScreen onEditingChange={setIsNavigationBlocked} />
+            <PatientManagementScreen 
+                onEditingChange={setIsNavigationBlocked} 
+                selectedPatientId={selectedPatientId}
+                onSelectPatient={setSelectedPatientId}
+                initialTab={patientInitialTab}
+            />
         )}
-        {activeTab === 'wards' && <WardDailyScreen />}
+        {activeTab === 'wards' && (
+            <WardDailyScreen 
+                onNavigateToPatient={handleNavigateToPatient}
+            />
+        )}
         {activeTab === 'settings' && <MasterSettingsScreen />}
       </main>
     </div>

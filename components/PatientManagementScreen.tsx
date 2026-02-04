@@ -9,12 +9,39 @@ const PAGE_SIZE = 20;
 
 interface PatientManagementScreenProps {
   onEditingChange?: (isEditing: boolean) => void;
+  selectedPatientId?: string | null;
+  onSelectPatient?: (patientId: string | null) => void;
+  initialTab?: 'basic' | 'matrix';
 }
 
-export const PatientManagementScreen: React.FC<PatientManagementScreenProps> = ({ onEditingChange }) => {
+export const PatientManagementScreen: React.FC<PatientManagementScreenProps> = ({ 
+    onEditingChange, 
+    selectedPatientId, 
+    onSelectPatient,
+    initialTab = 'basic'
+}) => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [admissionsMap, setAdmissionsMap] = useState<Record<string, Admission[]>>({});
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [internalSelectedPatient, setInternalSelectedPatient] = useState<Patient | null>(null);
+
+  // Sync prop to internal state
+  useEffect(() => {
+      if (selectedPatientId && patients.length > 0) {
+          const found = patients.find(p => p.id === selectedPatientId);
+          if (found) setInternalSelectedPatient(found);
+      } else if (selectedPatientId === null) {
+          setInternalSelectedPatient(null);
+      }
+  }, [selectedPatientId, patients]);
+
+  // Helper to handle selection change
+  const handleSelectPatient = (patient: Patient | null) => {
+      setInternalSelectedPatient(patient);
+      onSelectPatient?.(patient ? patient.id : null);
+  };
+  
+  // Use internal state for rendering
+  const selectedPatient = internalSelectedPatient;
   
   // Filter States
   const [filterName, setFilterName] = useState('');
@@ -152,10 +179,12 @@ export const PatientManagementScreen: React.FC<PatientManagementScreenProps> = (
   if (selectedPatient) {
       return (
           <PatientDetailScreen 
+              key={selectedPatient.id}
               patient={selectedPatient}
               admissions={admissionsMap[selectedPatient.id] || []}
               onEditingChange={onEditingChange}
-              onBack={() => setSelectedPatient(null)}
+              onBack={() => handleSelectPatient(null)}
+              initialTab={initialTab}
               onUpdate={() => {
                   // Refresh data and update selected patient reference
                   const newPatients = getPatients();
@@ -164,7 +193,7 @@ export const PatientManagementScreen: React.FC<PatientManagementScreenProps> = (
                   // CRITICAL: Also update the currently selected patient object so DetailScreen gets new props
                   const updatedSelected = newPatients.find(p => p.id === selectedPatient.id);
                   if (updatedSelected) {
-                      setSelectedPatient(updatedSelected);
+                      handleSelectPatient(updatedSelected);
                   }
 
                    const admMap: Record<string, Admission[]> = {};
@@ -284,7 +313,7 @@ export const PatientManagementScreen: React.FC<PatientManagementScreenProps> = (
                         return (
                             <tr 
                                 key={patient.id} 
-                                onClick={() => setSelectedPatient(patient)}
+                                onClick={() => handleSelectPatient(patient)}
                                 className="hover:bg-blue-50 transition-colors cursor-pointer group text-xl" 
                             >
                                 <td className="px-6 py-4 font-mono text-gray-600 text-center">{patient.identifier}</td>
