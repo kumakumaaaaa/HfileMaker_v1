@@ -32,8 +32,11 @@ export const MasterSettingsScreen: React.FC = () => {
     };
 
     // --- Helper for Filtering ---
+    const getLocalDateString = (d: Date = new Date()) => {
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
     const isValid = (item: { startDate?: string; endDate?: string }) => {
-        const today = new Date().toISOString().split('T')[0];
+        const today = getLocalDateString();
         const start = item.startDate;
         const end = item.endDate;
         
@@ -105,7 +108,7 @@ export const MasterSettingsScreen: React.FC = () => {
             password: '', 
             role: '入力者', 
             authority: '一般アカウント',
-            startDate: new Date().toISOString().split('T')[0]
+            startDate: getLocalDateString()
         });
         setIsEditing(true);
     };

@@ -27,7 +27,12 @@ export const PatientDetailScreen: React.FC<PatientDetailScreenProps> = ({
   hideHeader = false
 }) => {
   const [activeTab, setActiveTab] = useState<DetailTab>(initialTab);
-  const [currentDate, setCurrentDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  // Helper: Get today's date in local timezone (YYYY-MM-DD)
+  const getLocalDateString = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const [currentDate, setCurrentDate] = useState<string>(getLocalDateString());
   const [isFormEditing, setIsFormEditing] = useState(false);
   const [isMatrixDirty, setIsMatrixDirty] = useState(false);
 
@@ -123,22 +128,28 @@ export const PatientDetailScreen: React.FC<PatientDetailScreenProps> = ({
       {/* Content */}
       <div className="flex-1 overflow-auto p-8">
         {activeTab === 'basic' && (
-            <div className="max-w-5xl mx-auto space-y-8">
-                {/* Basic Info Card */}
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
-                    <div className="flex justify-between items-center mb-6">
-                        <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+            <div className="max-w-7xl mx-auto">
+                {/* Header with Edit Button */}
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold text-gray-800">基本情報・入院歴</h2>
+                    <button 
+                        onClick={() => setIsFormEditing(true)}
+                        className="bg-blue-600 text-white font-bold px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                    >
+                        <FileText className="w-5 h-5" />
+                        編集する
+                    </button>
+                </div>
+
+                {/* Cards Container */}
+                <div className="flex gap-8">
+                    {/* Basic Info Card - Left Side */}
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 flex-1 min-w-0">
+                        <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2 mb-6">
                             <FileText className="w-6 h-6" /> 患者基本情報
                         </h3>
-                        <button 
-                            onClick={() => setIsFormEditing(true)}
-                            className="text-blue-600 font-bold hover:underline text-lg"
-                        >
-                            編集する
-                        </button>
-                    </div>
                     
-                    <div className="grid grid-cols-2 gap-8">
+                    <div className="grid grid-cols-2 gap-6">
                         <div>
                             <label className="block text-sm font-bold text-gray-500 uppercase mb-1">患者ID</label>
                             <p className="font-mono text-xl text-gray-800">{patient.identifier}</p>
@@ -177,7 +188,7 @@ export const PatientDetailScreen: React.FC<PatientDetailScreenProps> = ({
                             <label className="block text-sm font-bold text-gray-500 uppercase mb-1">郵便番号</label>
                             <p className="text-xl text-gray-800 font-mono">{patient.postalCode || '-'}</p>
                         </div>
-                        <div className="col-span-2">
+                        <div>
                             <label className="block text-sm font-bold text-gray-500 uppercase mb-1">住所</label>
                             <p className="text-xl text-gray-800">{patient.address || '-'}</p>
                         </div>
@@ -193,29 +204,71 @@ export const PatientDetailScreen: React.FC<PatientDetailScreenProps> = ({
                     </div>
                 </div>
 
-                {/* Admissions Card */}
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+                {/* Admissions Card - Right Side */}
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 w-[400px] shrink-0">
                     <div className="flex justify-between items-center mb-6">
                         <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                             <Activity className="w-6 h-6" /> 入院歴
                         </h3>
-                        {/* Add Admission Button could go here */}
                     </div>
 
                     {admissions.length > 0 ? (
                         <div className="space-y-4">
                             {admissions.map(adm => (
-                                <div key={adm.id} className="p-6 bg-gray-50 rounded-lg border border-gray-200">
-                                    <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-2 mb-2">
-                                        <div className="text-xl font-bold text-gray-800 font-mono">
-                                            {adm.admissionDate} <span className="text-gray-400 mx-2">〜</span> {adm.dischargeDate || '継続中'}
+                                <div key={adm.id} className="p-5 bg-gray-50 rounded-lg border border-gray-200">
+                                    {/* 1. Admission Start */}
+                                    <div className="mb-4">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-gray-500 font-bold w-16">入院日</span>
+                                                <span className="font-mono text-lg text-gray-800 font-bold">{adm.admissionDate}</span>
+                                            </div>
+                                            {!adm.dischargeDate && (
+                                                <span className="bg-green-100 text-green-700 font-bold px-3 py-1 rounded text-base">入院中</span>
+                                            )}
                                         </div>
-                                        {!adm.dischargeDate && (
-                                            <span className="bg-green-100 text-green-700 font-bold px-3 py-1 rounded text-base inline-block text-center">入院中</span>
-                                        )}
+                                        <div className="flex items-center gap-3 text-base ml-19 pl-[64px]">
+                                            <span className="text-gray-400 text-sm">┗ 入院時病棟</span>
+                                            <span className="text-gray-800 text-lg">{adm.initialWard || '-'} / {adm.initialRoom || '-'}号室</span>
+                                        </div>
                                     </div>
-                                    <div className="text-lg text-gray-600">
-                                        入院時病棟: <span className="font-semibold">{adm.initialWard || '-'}</span> / <span className="font-semibold">{adm.initialRoom || '-'}</span>号室
+
+                                    {/* 2. Movements (Timeline) */}
+                                    {adm.movements && adm.movements.length > 0 && (
+                                        <div className="mb-4 pl-[64px] border-l-2 border-gray-200 ml-[26px] py-2 space-y-4">
+                                            {adm.movements.sort((a, b) => a.date.localeCompare(b.date)).map(mov => (
+                                                <div key={mov.id} className="relative pl-6">
+                                                    {/* Timeline Dot */}
+                                                    <div className={`absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full border-2 border-white ${
+                                                        mov.type === 'transfer_ward' ? 'bg-blue-500' :
+                                                        mov.type === 'transfer_room' ? 'bg-green-500' : 'bg-orange-500'
+                                                    }`} />
+                                                    
+                                                    <div className="text-base text-gray-700">
+                                                        <div className="font-mono text-sm text-gray-500 mb-0.5">{mov.date}</div>
+                                                        {mov.type === 'transfer_ward' && (
+                                                            <span><span className="text-blue-600 font-bold">転棟</span>：{mov.ward}{mov.room ? ` / ${mov.room}号室` : ''}</span>
+                                                        )}
+                                                        {mov.type === 'transfer_room' && (
+                                                            <span><span className="text-green-600 font-bold">転床</span>：{mov.ward ? `${mov.ward} / ` : ''}{mov.room}号室</span>
+                                                        )}
+                                                        {mov.type === 'overnight' && (
+                                                            <span><span className="text-orange-600 font-bold">外泊</span>：{mov.endDate ? `〜${mov.endDate}` : '〜(継続中)'}</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* 3. Discharge */}
+                                    <div className="flex items-center gap-3 pt-2">
+                                        <span className="text-gray-500 font-bold w-16">退院日</span>
+                                        {adm.dischargeDate ? (
+                                            <span className="font-mono text-lg text-gray-800 font-bold">{adm.dischargeDate}</span>
+                                        ) : (
+                                            <span className="text-gray-400 text-lg font-mono">--------------------</span>
+                                        )}
                                     </div>
                                 </div>
                             ))}
@@ -224,6 +277,7 @@ export const PatientDetailScreen: React.FC<PatientDetailScreenProps> = ({
                         <p className="text-gray-400 text-lg">入院歴はありません</p>
                     )}
                 </div>
+            </div>
             </div>
         )}
 

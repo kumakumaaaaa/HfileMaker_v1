@@ -19,7 +19,11 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
   // Master Data
   const wards = getWards();
   const rooms = getRooms();
-  const today = new Date().toISOString().split('T')[0];
+  // Helper: Get today's date in local timezone (YYYY-MM-DD)
+  const getLocalDateString = (d: Date = new Date()) => {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const today = getLocalDateString();
 
   const isAvailable = (item: { startDate?: string, endDate?: string }) => {
       // If start date is future, not available
@@ -95,7 +99,7 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
       const newAdm: Admission = {
           id: `temp_${Date.now()}`,
           patientId: initialPatient?.id || '',
-          admissionDate: new Date().toISOString().split('T')[0],
+          admissionDate: getLocalDateString(),
           initialWard: '一般病棟',
           initialRoom: ''
       };
@@ -117,7 +121,7 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
       const newMov = {
           id: `mov_${Date.now()}_${Math.random()}`,
           type: 'transfer_ward' as const,
-          date: new Date().toISOString().split('T')[0]
+          date: getLocalDateString()
       };
       setAdmissions(admissions.map(a => {
           if (a.id !== admissionId) return a;
@@ -171,10 +175,10 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
 
       {/* Form Content */}
       <div className="flex-1 overflow-auto p-8">
-        <div className="max-w-5xl mx-auto space-y-8">
+        <div className="max-w-7xl mx-auto flex gap-8">
             
-            {/* Basic Info */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+            {/* Basic Info - Left Side */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 flex-1 min-w-0">
                 <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
                     <User className="w-6 h-6 text-gray-500" /> 基本情報
                 </h3>
@@ -314,8 +318,8 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                 </div>
             </div>
 
-            {/* Admissions */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+            {/* Admissions - Right Side */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 w-[500px] shrink-0 self-start">
                 <div className="flex justify-between items-center mb-6 border-b pb-4">
                     <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                         <Activity className="w-6 h-6 text-gray-500" /> 入院歴
@@ -362,9 +366,10 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                                             value={adm.initialWard || ''}
                                             onChange={(e) => {
                                                 const newWard = e.target.value;
-                                                // Clear room if ward changes
-                                                updateAdmission(adm.id, 'initialWard', newWard);
-                                                updateAdmission(adm.id, 'initialRoom', '');
+                                                // Update both ward and clear room in one state update
+                                                setAdmissions(prev => prev.map(a => 
+                                                    a.id === adm.id ? { ...a, initialWard: newWard, initialRoom: '' } : a
+                                                ));
                                             }}
                                             className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                                         >
@@ -400,7 +405,7 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                                 <div className="border-t border-b border-gray-100 py-4">
                                     <div className="flex justify-between items-center mb-3">
                                         <h4 className="font-bold text-gray-700 flex items-center gap-2 text-sm">
-                                            <Activity className="w-4 h-4 text-blue-500" /> 異動・外泊履歴
+                                            <Activity className="w-4 h-4 text-blue-500" /> 移動・外泊履歴
                                         </h4>
                                         <button
                                             onClick={() => addMovement(adm.id)}
@@ -451,10 +456,16 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                                                                             value={mov.ward || ''}
                                                                             onChange={e => {
                                                                                 const newWard = e.target.value;
-                                                                                updateMovement(adm.id, mov.id, 'ward', newWard);
-                                                                                if (mov.type === 'transfer_ward') {
-                                                                                    updateMovement(adm.id, mov.id, 'room', '');
-                                                                                }
+                                                                                // Update both ward and clear room in one state update
+                                                                                setAdmissions(prev => prev.map(a => {
+                                                                                    if (a.id !== adm.id) return a;
+                                                                                    const movements = (a.movements || []).map(m => 
+                                                                                        m.id === mov.id 
+                                                                                            ? { ...m, ward: newWard, room: mov.type === 'transfer_ward' ? '' : m.room } 
+                                                                                            : m
+                                                                                    );
+                                                                                    return { ...a, movements };
+                                                                                }));
                                                                             }}
                                                                             disabled={mov.type === 'transfer_room'}
                                                                             className={`w-full px-2 py-1.5 text-sm border border-gray-300 rounded bg-white ${mov.type === 'transfer_room' ? 'bg-gray-100 text-gray-400' : ''}`}
