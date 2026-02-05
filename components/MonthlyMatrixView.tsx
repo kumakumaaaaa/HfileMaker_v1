@@ -6,7 +6,7 @@ import { getMonthlyAssessments, saveAssessment, deleteAssessment, getAdmissions,
 import { getPatientLocationAndStatus, getActiveAdmission } from '../utils/patientHelper';
 import { evaluatePatient } from '../utils/evaluation';
 import { CellEditPopup } from './CellEditPopup'; // Import popup
-import { Edit2, Save, X, AlertCircle, Copy, Trash2, ChevronLeft, ChevronRight, User, Calendar, ArrowRight, Building2, BedDouble, Activity } from 'lucide-react'; // Icons
+import { Edit2, Save, X, AlertCircle, Copy, Trash2, ChevronLeft, ChevronRight, User, Calendar, ArrowRight, Building2, BedDouble, Activity, Check } from 'lucide-react'; // Icons
 
 interface MonthlyMatrixViewProps {
   patientId: string;
@@ -163,6 +163,13 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
     position: { x: number; y: number };
   }>({ isOpen: false, item: null, position: { x: 0, y: 0 } });
 
+  // Validation Alert State
+  const [validationAlert, setValidationAlert] = useState<{
+      isOpen: boolean;
+      date: string;
+      unsetItems: string[];
+  }>({ isOpen: false, date: '', unsetItems: [] });
+
 
 
   // Helper: Get linear list of all items for navigation
@@ -173,17 +180,17 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
   ], [itemsByCategory]);
 
   // Helper to calculate initial scores from item data
-  const initialDataToState = (items: Record<string, boolean | number>, feeId: string) => {
+  const initialDataToState = (items: Record<string, number | null>, feeId: string) => {
      let a = 0, b = 0, c = 0;
      ITEM_DEFINITIONS.forEach(def => {
        const v = items[def.id];
-       if (def.category === 'a' && v === true) a += def.points;
-       if (def.category === 'c' && v === true) c += def.points;
+       if (def.category === 'a' && typeof v === 'number' && v > 0) a += def.points;
+       if (def.category === 'c' && typeof v === 'number' && v > 0) c += def.points;
        if (def.category === 'b' && typeof v === 'number') {
            let pts = v;
            if (def.hasAssistance) {
                const av = items[`${def.id}_assist`];
-               pts = pts * ((typeof av === 'number') ? av : 1);
+               pts = pts * ((typeof av === 'number') ? av : 0);
            }
            b += pts;
        }
@@ -322,21 +329,22 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
       setEditingDate(null);
       setPendingChanges({});
       setFocusedItemId(null);
+      setValidationAlert({ isOpen: false, date: '', unsetItems: [] });
       setPopupState({ isOpen: false, item: null, position: { x: 0, y: 0 } });
     }
   };
 
   // Save Editing
-  const handleSaveEdit = () => {
-    const dates = Object.keys(pendingChanges);
+  // Save Editing (Internal Logic)
+  const proceedSave = (targetDate?: string) => {
+    // If targetDate provided (for Force Save), only save that date.
+    // Otherwise save all pending changes.
+    const dates = targetDate ? [targetDate] : Object.keys(pendingChanges);
+    
     dates.forEach(date => {
         saveAssessment(pendingChanges[date]);
     });
     
-    // Reload data logic update: re-fetch relevant admissions
-    // Re-triggering the useEffect by updating 'lastUpdated' in parent or local force update?
-    // Since we save to localStorage, but useEffect depends on [admissions, yearMonth, lastUpdated].
-    // We can just locally update state for immediate feedback.
     setMonthlyData(prev => {
         const next = { ...prev };
         dates.forEach(d => {
@@ -345,12 +353,51 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
         return next;
     });
     
-    setEditingDate(null);
-    setPendingChanges({});
-    setFocusedItemId(null);
+    if (Object.keys(pendingChanges).every(d => dates.includes(d))) {
+         setEditingDate(null);
+         setPendingChanges({});
+         setFocusedItemId(null);
+    } else {
+         // Partial save? (Not typical here, usually single day edit)
+         // But logic allows multiple.
+    }
     
-    // Notify parent to refresh list indicators
+    // Close Alert
+    setValidationAlert({ isOpen: false, date: '', unsetItems: [] });
+    
     onPatientRefresh?.();
+  };
+
+  // Handle Save Button Click (With Validation)
+  const handleSaveEdit = () => {
+    // Check validation for ALL pending dates (usually only one)
+    const dates = Object.keys(pendingChanges);
+    for (const date of dates) {
+         const pending = pendingChanges[date];
+         const unsetList: string[] = [];
+         ITEM_DEFINITIONS.forEach(def => {
+             const val = pending.items[def.id];
+             if (val === null || val === undefined) {
+                 unsetList.push(def.label);
+             }
+         });
+
+         if (unsetList.length > 0) {
+             setValidationAlert({
+                 isOpen: true,
+                 date: date,
+                 unsetItems: unsetList
+             });
+             return; // Stop save
+         }
+    }
+
+    proceedSave();
+  };
+
+  const forceSave = () => {
+    // Bypass validation and save everything
+    proceedSave();
   };
 
   // Delete Data
@@ -475,68 +522,86 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
   };
 
   const applyValueAndAdvance = (item: NursingItemDefinition, val: number | boolean) => {
-      handleValueChange(val, 1);
-      moveFocus(1);
+      // Cast boolean to number for tri-state compatibility if needed, or assume val is number from KeyDown logic 
+      // KeyDown logic passes: 1 (true), 0 (false) -> applyValueAndAdvance(item, true/false)
+      // We should convert true -> 1, false -> 0
+      const numericVal = val === true ? 1 : (val === false ? 0 : val as number);
+      if (editingDate) {
+          handleSaveValue(editingDate, item.id, numericVal);
+          moveFocus(1);
+      }
   }
 
-  // Cell Click (Set Focus)
+  // Cell Click (Set Focus) & Toggle
   const handleCellClick = (e: React.MouseEvent, date: string, item: NursingItemDefinition) => {
+    e.stopPropagation();
     if (editingDate !== date) {
         if (date !== currentDate) onDateSelect(date);
         return;
     }
-    setFocusedItemId(item.id);
-    // Effect will open popup
+
+    if (item.inputType === 'checkbox') {
+        const currentData = pendingChanges[date];
+        const currentVal = currentData?.items?.[item.id] as number | null;
+        
+        // Cycle: null -> 1 -> 0 -> null
+        let nextVal: number | null = null;
+        if (currentVal === null || currentVal === undefined) nextVal = 1;
+        else if (currentVal > 0) nextVal = 0;
+        else nextVal = null; // 0 -> null
+
+        handleSaveValue(date, item.id, nextVal);
+    } else {
+        // Open Popup
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const x = rect.left + window.scrollX;
+        const y = rect.bottom + window.scrollY;
+
+        setPopupState({
+            isOpen: true,
+            item,
+            position: { x, y }
+        });
+        setFocusedItemId(item.id);
+    }
   };
 
-  // Update Value from Popup
-  const handleValueChange = (val: boolean | number, assistVal?: number) => {
-    // Current editing date is target
-    if (!editingDate || !pendingChanges[editingDate] || !focusedItemId) return;
-    
-    // Use focusedItemId (source of truth) instead of popupState.item
-    const newItemId = focusedItemId; 
-    const itemDef = ITEM_DEFINITIONS.find(i => i.id === newItemId);
-    if (!itemDef) return;
+  const handleSaveValue = (dateStr: string, itemId: string, val: number | null, assistVal?: number) => {
+      const currentData = pendingChanges[dateStr];
+      // Note: currentData might be undefined if we haven't started editing this day yet?
+      // But handleStartEdit initializes it. editingDate should be set.
+      if (!currentData) return; 
 
-    // Get current pending data for the editing date
-    const currentData = pendingChanges[editingDate];
-    const newItems = { ...currentData.items, [newItemId]: val };
-    
-    // Save assistance value if provided
-    if (typeof assistVal === 'number') {
-        newItems[`${newItemId}_assist`] = assistVal;
-    }
-    
-    // Recalculate Scores
-    let a = 0, b = 0, c = 0;
-    ITEM_DEFINITIONS.forEach(def => {
-       const v = newItems[def.id];
-       if (def.category === 'a' && v === true) a += def.points;
-       if (def.category === 'c' && v === true) c += def.points;
-       if (def.category === 'b' && typeof v === 'number') {
-          // B items logic
-          let points = v;
-          if (def.hasAssistance) {
-             const av = newItems[`${def.id}_assist`];
-             const mult = (typeof av === 'number') ? av : 1;
-             points = points * mult;
-          }
-          b += points;
-       }
-    });
+      const newItems = { ...currentData.items, [itemId]: val };
+      if (typeof assistVal === 'number') newItems[`${itemId}_assist`] = assistVal;
 
-    const isSevere = evaluatePatient(currentData.admissionFeeId, { items: newItems, scoreA: a, scoreB: b, scoreC: c });
-
-    setPendingChanges(prev => ({
-        ...prev,
-        [editingDate]: {
-            ...currentData,
-            items: newItems,
-            scores: { a, b, c },
-            isSevere
+      let a = 0, b = 0, c = 0;
+      ITEM_DEFINITIONS.forEach(def => {
+        const v = newItems[def.id];
+        if (def.category === 'a' && typeof v === 'number' && v > 0) a += def.points;
+        if (def.category === 'c' && typeof v === 'number' && v > 0) c += def.points;
+        if (def.category === 'b' && typeof v === 'number') {
+            let points = v;
+            if (def.hasAssistance) {
+                const av = newItems[`${def.id}_assist`];
+                const mult = (typeof av === 'number') ? av : 0; 
+                points = points * mult;
+            }
+            b += points;
         }
-    }));
+      });
+
+      const isSevere = evaluatePatient(currentData.admissionFeeId, { items: newItems, scoreA: a, scoreB: b, scoreC: c });
+
+      setPendingChanges(prev => ({
+          ...prev,
+          [dateStr]: {
+              ...currentData,
+              items: newItems,
+              scores: { a, b, c },
+              isSevere
+          }
+      }));
   };
 
   // Memo Handlers
@@ -902,40 +967,38 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                       // Data
                       const pending = pendingChanges[date];
                       const stored = monthlyData[date];
-                      const data = pending || stored;
-                      
-                      const val = data?.items?.[item.id];
-                      // Checkbox logic
-                      let displayVal: React.ReactNode = '';
-                      if (item.inputType === 'checkbox') {
-                          if (val === true) displayVal = <span className="text-blue-600 font-bold">●</span>;
-                      } else {
-                          // B items - simple number for matrix
-                          if (typeof val === 'number') displayVal = val;
-                      }
+                      const data = pending || stored; // Used for severe check
 
-                      // Dirty check (compare pending to stored)
+                      // Values (Tri-state compatible)
+                      const pendingV = pending?.items?.[item.id] as number | null | undefined;
+                      const storedV = stored?.items?.[item.id] as number | null | undefined;
+                      const val = pendingV !== undefined ? pendingV : storedV;
+
+                      // Dirty Check
                       let isDirty = false;
-                      
-                      if (pending) {
-                          const defaultVal = item.inputType === 'checkbox' ? false : 0;
-                          
-                          const pVal = pending.items?.[item.id] ?? defaultVal;
-                          const sVal = stored?.items?.[item.id] ?? defaultVal;
-
-                          if (pVal !== sVal) {
-                              isDirty = true;
-                          }
-                          
-                          if (!isDirty && item.category === 'b' && item.hasAssistance) {
-                              const pAssist = pending.items?.[`${item.id}_assist`] ?? 1;
-                              const sAssist = stored?.items?.[`${item.id}_assist`] ?? 1;
-                              if (pAssist !== sAssist) isDirty = true;
-                          }
+                      if (pendingV !== undefined && pendingV !== storedV) {
+                          isDirty = true;
+                      }
+                      if (!isDirty && item.category === 'b' && item.hasAssistance) {
+                           const pAssist = pending?.items?.[`${item.id}_assist`];
+                           const sAssist = stored?.items?.[`${item.id}_assist`];
+                           if (pAssist !== undefined && pAssist !== sAssist) isDirty = true;
                       }
                       
                       const isFocused = isEditing && focusedItemId === item.id;
                       
+                      // Display Logic for Text (Non-checkbox)
+                      let displayVal: React.ReactNode = ''; 
+                      if (item.category !== 'a' && item.category !== 'c') {
+                          // B items
+                          if (typeof val === 'number') {
+                              displayVal = val;
+                              // Add assist marker
+                              const assistV = (pending?.items?.[`${item.id}_assist`] ?? stored?.items?.[`${item.id}_assist`]) as number | undefined;
+                              if (assistV === 1) displayVal = `${val} (介)`;
+                          }
+                      }
+
                       return (
                         <td 
                           key={date} 
@@ -953,7 +1016,20 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
                           `}
                           onClick={(e) => isEditing && handleCellClick(e, date, item)}
                         >
-                          {displayVal}
+                          {/* Tri-state Visuals for Checkbox */}
+                          {item.inputType === 'checkbox' ? (
+                              <div className="flex justify-center items-center h-full w-full">
+                                  {(val === 1) && <span className="text-blue-600 font-bold text-sm">実施</span>}
+                                  {(val === 0) && <span className="text-gray-400 font-bold text-xs">未実施</span>}
+                              </div>
+                          ) : (
+                               <div className="flex justify-center items-center h-full w-full">
+                                  <span className={`text-sm ${val !== undefined && val !== null ? 'font-bold text-gray-800' : 'text-gray-300'}`}>
+                                      {displayVal}
+                                  </span>
+                               </div>
+                          )}
+                           
                           {isDirty && <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span>}
                         </td>
                       );
@@ -1033,13 +1109,57 @@ export const MonthlyMatrixView: React.FC<MonthlyMatrixViewProps> = ({
       </div>
       </div>
 
+      {/* Validation Alert Modal */}
+      {validationAlert.isOpen && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+              <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 border-2 border-red-500 animate-in zoom-in-95 duration-200 transform scale-100">
+                  <div className="flex items-center gap-3 mb-4 text-red-600 border-b border-red-100 pb-3">
+                      <AlertCircle className="w-8 h-8" />
+                      <h3 className="text-2xl font-bold">未入力項目があります</h3>
+                  </div>
+                  
+                  <div className="mb-6">
+                      <p className="text-gray-700 font-bold mb-2 text-lg">
+                          以下の項目が評価されていません：
+                      </p>
+                      <div className="bg-red-50 p-4 rounded-lg border border-red-100 max-h-48 overflow-y-auto">
+                          <ul className="list-disc pl-5 space-y-1 text-gray-800 font-medium">
+                              {validationAlert.unsetItems.map(item => (
+                                  <li key={item}>{item}</li>
+                              ))}
+                          </ul>
+                      </div>
+                      <p className="text-gray-500 text-sm mt-3">
+                          ※入力漏れを防ぐため、すべての項目を確認してください。
+                      </p>
+                  </div>
+
+                  <div className="flex gap-4 pt-2">
+                       <button 
+                          onClick={() => setValidationAlert({ ...validationAlert, isOpen: false })}
+                          className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 py-3 rounded-lg font-bold text-lg transition-colors border-2 border-gray-300"
+                       >
+                          編集に戻る
+                       </button>
+                       <button 
+                          onClick={forceSave}
+                          className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-lg font-bold text-lg shadow-md transition-colors flex items-center justify-center gap-2"
+                       >
+                          <Save className="w-5 h-5" />
+                          このまま保存
+                       </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {/* Popup */}
       {popupState.isOpen && popupState.item && pendingChanges[editingDate!] && (
         <CellEditPopup 
           item={popupState.item}
           currentValue={pendingChanges[editingDate!]?.items?.[popupState.item.id] as any} 
           currentAssistValue={pendingChanges[editingDate!]?.items?.[`${popupState.item.id}_assist`] as number | undefined}
-          onSave={handleValueChange}
+          onSave={(val, assistVal) => handleSaveValue(editingDate!, popupState.item!.id, val, assistVal)}
           onClose={() => setPopupState(prev => ({ ...prev, isOpen: false }))}
           position={popupState.position}
         />

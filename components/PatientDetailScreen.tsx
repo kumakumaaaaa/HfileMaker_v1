@@ -205,7 +205,7 @@ export const PatientDetailScreen: React.FC<PatientDetailScreenProps> = ({
                 </div>
 
                 {/* Admissions Card - Right Side */}
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 w-[400px] shrink-0">
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 w-[600px] shrink-0">
                     <div className="flex justify-between items-center mb-6">
                         <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                             <Activity className="w-6 h-6" /> 入院歴
@@ -227,7 +227,7 @@ export const PatientDetailScreen: React.FC<PatientDetailScreenProps> = ({
                                                 <span className="bg-green-100 text-green-700 font-bold px-3 py-1 rounded text-base">入院中</span>
                                             )}
                                         </div>
-                                        <div className="flex items-center gap-3 text-base ml-19 pl-[64px]">
+                                        <div className="flex items-center gap-3 text-base pl-[64px]">
                                             <span className="text-gray-400 text-sm">┗ 入院時病棟</span>
                                             <span className="text-gray-800 text-lg">{adm.initialWard || '-'} / {adm.initialRoom || '-'}号室</span>
                                         </div>

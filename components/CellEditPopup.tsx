@@ -5,9 +5,9 @@ import { NursingItemDefinition } from '../types/nursing';
 
 interface CellEditPopupProps {
   item: NursingItemDefinition;
-  currentValue: boolean | number;
+  currentValue: number | null;
   currentAssistValue?: number; // 0 or 1
-  onSave: (val: boolean | number, assistVal?: number) => void;
+  onSave: (val: number | null, assistVal?: number) => void;
   onClose: () => void;
   position: { x: number; y: number };
 }
@@ -15,7 +15,7 @@ interface CellEditPopupProps {
 export const CellEditPopup: React.FC<CellEditPopupProps> = ({ item, currentValue, currentAssistValue, onSave, onClose, position }) => {
   const popupRef = useRef<HTMLDivElement>(null);
   const [localVal, setLocalVal] = React.useState(currentValue);
-  const [localAssist, setLocalAssist] = React.useState(currentAssistValue ?? 1); // Default to yes
+  const [localAssist, setLocalAssist] = React.useState(currentAssistValue ?? 1); // Default to yes (1) if undefined
 
   // Focus trap / Click outside handler
   useEffect(() => {
@@ -85,7 +85,7 @@ export const CellEditPopup: React.FC<CellEditPopupProps> = ({ item, currentValue
   return (
     <div 
       ref={popupRef}
-      className="fixed bg-white border border-gray-300 shadow-xl rounded-lg p-4 w-80 text-sm animate-in fade-in zoom-in-95 duration-100"
+      className="fixed bg-white border border-gray-300 shadow-xl rounded-lg p-4 w-80 text-sm transition-opacity duration-100"
       style={adjustedStyle}
     >
       <div className="flex justify-between items-center mb-3 pb-2 border-b border-gray-100">
@@ -119,14 +119,14 @@ export const CellEditPopup: React.FC<CellEditPopupProps> = ({ item, currentValue
         {item.inputType === 'checkbox' ? (
           <div className="flex flex-col gap-2">
             <button
-               onClick={() => { onSave(true); onClose(); }}
-               className={`p-3 text-left rounded border transition-colors ${currentValue === true ? 'bg-blue-50 border-blue-500 text-blue-800 font-bold' : 'hover:bg-gray-50 border-gray-200'}`}
+               onClick={() => { onSave(1); onClose(); }}
+               className={`p-3 text-left rounded border transition-colors ${currentValue === 1 ? 'bg-blue-50 border-blue-500 text-blue-800 font-bold' : 'hover:bg-gray-50 border-gray-200'}`}
             >
               あり / 実施 (1点)
             </button>
             <button
-               onClick={() => { onSave(false); onClose(); }}
-               className={`p-3 text-left rounded border transition-colors ${currentValue === false ? 'bg-gray-100 border-gray-400 font-bold' : 'hover:bg-gray-50 border-gray-200'}`}
+               onClick={() => { onSave(0); onClose(); }}
+               className={`p-3 text-left rounded border transition-colors ${currentValue === 0 ? 'bg-gray-100 border-gray-400 font-bold' : 'hover:bg-gray-50 border-gray-200'}`}
             >
               なし / 未実施 (0点)
             </button>

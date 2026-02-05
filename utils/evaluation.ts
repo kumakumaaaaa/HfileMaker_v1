@@ -12,7 +12,8 @@ import { NursingAssessment, NURSING_STANDARDS, ITEM_DEFINITIONS } from '../types
  * @param items 入力項目
  * @returns { a: number, b: number, c: number }
  */
-export function calculateScores(items: Record<string, boolean | number>) {
+// Update parameter type from `boolean | number` to `number | null` (or just `any` to be safe during migration but prefer strict)
+export function calculateScores(items: Record<string, number | null>) {
   let calculatedScoreA = 0;
   let calculatedScoreB = 0;
   let calculatedScoreC = 0;
@@ -21,15 +22,47 @@ export function calculateScores(items: Record<string, boolean | number>) {
     const value = items[def.id];
     
     if (def.category === 'a') {
-      if (value === true) calculatedScoreA += def.points;
+      // Changed from `value === true` to `typeof value === 'number' && value > 0`
+      // Assumes 1=Yes, 0=No. 
+      if (typeof value === 'number' && value > 0) calculatedScoreA += def.points;
     } else if (def.category === 'c') {
-      if (value === true) calculatedScoreC += def.points;
+      if (typeof value === 'number' && value > 0) calculatedScoreC += def.points;
     } else if (def.category === 'b') {
       if (typeof value === 'number') {
         let points = value;
         if (def.hasAssistance) {
            const assistValue = items[`${def.id}_assist`];
-           const multiplier = (typeof assistValue === 'number') ? assistValue : 0;
+           // Assist Value: 1=Mediated, 0=None? Or 1=Yes? 
+           // In B item options, distinct from assistance. 
+           // Assistance is strictly "Implemented". 
+           // If assistance is toggled ON, usually it's 1. 
+           // Current logic: `multiplier = assistValue`. If 1, score remains. If 0?
+           // Actually `hasAssistance`: 
+           //   - Transfer/Eating/Clothes: Points * Assistance?
+           //   - Let's check `ITEM_DEFINITIONS`.
+           //   - E.g. Transfer: 
+           //       0 (Independent)
+           //       1 (Partial)
+           //       2 (Full)
+           // If Assistance is YES? 
+           // Logic says: "介助の実施有無を掛け合わせる".
+           // If assistance is implemented, score counts? Or doubled?
+           // Actually, `assistance` usually means "Was assistance provided?". 
+           // If patient is Independent (0), assistance should be No.
+           // If Dependent (1 or 2), assistance Yes.
+           // The "score" is the value selected (0, 1, 2).
+           // The "assistance" might multiply it?
+           // Wait, previous code was: `points = points * multiplier`.
+           // If assistValue starts as undefined, multiplier=0 => points=0.
+           // This implies that if you don't check "Assistance provided", you get 0 points even if you selected "Full Help"?
+           // That sounds wrong. "Full Help" implies you MUST provide assistance.
+           // But maybe the rule is: "If you didn't provide assistance, you don't get points".
+           // Let's keep logic same as before but safe check number.
+           const multiplier = (typeof assistValue === 'number') ? assistValue : 0; // Default to 0?
+           // Current code used 0 default. So if assist is unset, score is 0. 
+           // But now we allow explicit 0.
+           // If explicit 0 (No Assitance), score 0.
+           // If null (Unset), score 0.
            points = points * multiplier;
         }
         calculatedScoreB += points;

@@ -17,15 +17,15 @@ const INITIAL_WARDS: Ward[] = [
 
 // --- Room Master Data ---
 const INITIAL_ROOMS: Room[] = [
-    { code: '101', wardCode: 'W001', name: '101' }, { code: '102', wardCode: 'W001', name: '102' }, { code: '103', wardCode: 'W001', name: '103' },
-    { code: 'E101', wardCode: 'W001', name: '東101' }, { code: 'E102', wardCode: 'W001', name: '東102' },
+    { code: '101', wardCode: 'W001', name: '101', startDate: '2024-04-01' }, { code: '102', wardCode: 'W001', name: '102', startDate: '2024-04-01' }, { code: '103', wardCode: 'W001', name: '103', startDate: '2024-04-01' },
+    { code: 'E101', wardCode: 'W001', name: '東101', startDate: '2024-04-01' }, { code: 'E102', wardCode: 'W001', name: '東102', startDate: '2024-04-01' },
 
-    { code: '201', wardCode: 'W002', name: '201' }, { code: '202', wardCode: 'W002', name: '202' }, { code: '203', wardCode: 'W002', name: '203' },
-    { code: 'N101', wardCode: 'W002', name: '西101' }, { code: 'N102', wardCode: 'W002', name: '西102' },
+    { code: '201', wardCode: 'W002', name: '201', startDate: '2024-04-01' }, { code: '202', wardCode: 'W002', name: '202', startDate: '2024-04-01' }, { code: '203', wardCode: 'W002', name: '203', startDate: '2024-04-01' },
+    { code: 'N101', wardCode: 'W002', name: '西101', startDate: '2024-04-01' }, { code: 'N102', wardCode: 'W002', name: '西102', startDate: '2024-04-01' },
 
-    { code: '301', wardCode: 'W003', name: '301' }, { code: '302', wardCode: 'W003', name: '302' }, { code: '303', wardCode: 'W003', name: '303' },
+    { code: '301', wardCode: 'W003', name: '301', startDate: '2024-04-01' }, { code: '302', wardCode: 'W003', name: '302', startDate: '2024-04-01' }, { code: '303', wardCode: 'W003', name: '303', startDate: '2024-04-01' },
 
-    { code: '205', wardCode: 'W004', name: '205' }, { code: '206', wardCode: 'W004', name: '206' },
+    { code: '205', wardCode: 'W004', name: '205', startDate: '2024-04-01' }, { code: '206', wardCode: 'W004', name: '206', startDate: '2024-04-01' },
 ];
 
 // --- Master CRUD Operations ---
@@ -74,7 +74,7 @@ export const deleteRoom = (code: string) => {
 // --- User Master Logic ---
 const INITIAL_USERS: UserAccount[] = [
     { id: 'u1', userId: 'admin', name: 'システム管理者', password: 'password', role: '管理者', authority: 'システム管理者アカウント' },
-    { id: 'u2', userId: 'manager', name: '施設管理者', password: 'password', role: '管理者', authority: '施設管理者アカウント' },
+    { id: 'u2', userId: 'manager', name: '施設管理者', password: 'password', role: '評価者', authority: '施設管理者アカウント' },
     { id: 'u3', userId: 'staff1', name: '看護 太郎', password: 'password', role: '評価者', authority: '一般アカウント' },
     { id: 'u4', userId: 'staff2', name: '医療 花子', password: 'password', role: '入力者', authority: '一般アカウント' },
 ];
@@ -386,4 +386,34 @@ export const getAssessmentsByDate = (date: string): string[] => {
     }
   }
   return admissionIds;
+};
+
+// getAllAssessmentsMap implementation for a specific date
+export const getDailyAssessmentsMap = (date: string): Record<string, DailyAssessment> => {
+   if (typeof window === 'undefined') return {};
+   
+   const assessments: Record<string, DailyAssessment> = {};
+   const suffix = `_${date}`;
+   const prefix = STORAGE_KEY_ASSESSMENTS_PREFIX;
+
+   for (let i = 0; i < localStorage.length; i++) {
+     const key = localStorage.key(i);
+     if (key && key.startsWith(prefix) && key.endsWith(suffix)) {
+       const stored = localStorage.getItem(key);
+       if (stored) {
+         try {
+             const val = JSON.parse(stored);
+             // key format: prefix + admissionId + suffix
+             // extracted admissionId:
+             const admissionId = key.slice(prefix.length, key.length - suffix.length);
+             if (admissionId) {
+                 assessments[admissionId] = val;
+             }
+         } catch (e) {
+             console.error("Failed to parse assessment", key, e);
+         }
+       }
+     }
+   }
+   return assessments;
 };

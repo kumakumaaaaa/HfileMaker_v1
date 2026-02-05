@@ -1,18 +1,28 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GlobalHeader, TabType } from '../components/GlobalHeader';
 import { InpatientScreen } from '../components/InpatientScreen';
 import { DashboardScreen } from '../components/DashboardScreen';
 import { WardDailyScreen } from '../components/WardDailyScreen';
 import { PatientManagementScreen } from '../components/PatientManagementScreen';
 import { MasterSettingsScreen } from '../components/MasterSettingsScreen';
+import { getUsers } from '../utils/storage';
+import { UserAccount } from '../types/nursing';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [isNavigationBlocked, setIsNavigationBlocked] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [patientInitialTab, setPatientInitialTab] = useState<'basic' | 'matrix'>('basic');
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
+
+  // Mock Login: Load System Admin
+  useEffect(() => {
+      const users = getUsers();
+      const admin = users.find(u => u.userId === 'admin') || users[0];
+      setCurrentUser(admin);
+  }, []);
 
   const handleTabChange = (newTab: TabType) => {
     if (isNavigationBlocked) {
@@ -43,7 +53,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-100 overflow-hidden">
-      <GlobalHeader activeTab={activeTab} onTabChange={handleTabChange} />
+      <GlobalHeader activeTab={activeTab} onTabChange={handleTabChange} currentUser={currentUser} />
       
       <main className="flex-1 overflow-hidden relative">
         {/* Simple Tab Switching Logic */}

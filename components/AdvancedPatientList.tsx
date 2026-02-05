@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Patient, Admission, Ward, Room } from '../types/nursing';
+import { Patient, Admission, Ward, Room, ITEM_DEFINITIONS, DailyAssessment } from '../types/nursing';
 import { getPatientLocationAndStatus, getActiveAdmission } from '../utils/patientHelper';
-import { getWards, getRooms, getAssessmentsByDate } from '../utils/storage';
+import { getWards, getRooms, getDailyAssessmentsMap } from '../utils/storage';
 import { Search, Filter, Calendar, Building2, BedDouble, User, Check } from 'lucide-react';
 
 interface Props {
@@ -33,8 +33,8 @@ export const AdvancedPatientList: React.FC<Props> = ({ patients, allAdmissions, 
     const [selectedWards, setSelectedWards] = useState<string[]>([]);
     const [selectedRooms, setSelectedRooms] = useState<string[]>([]);
 
-    // Entered Assessment IDs (for "未" indicator)
-    const [enteredAdmissionIds, setEnteredAdmissionIds] = useState<string[]>([]);
+    // Entered Assessment Map (Changed from IDs to Map)
+    const [dailyAssessments, setDailyAssessments] = useState<Record<string, any>>({});
 
     // Computed: Admissions Grouped by Patient
     const admissionsByPatient = useMemo(() => {
@@ -65,7 +65,7 @@ export const AdvancedPatientList: React.FC<Props> = ({ patients, allAdmissions, 
 
     // Fetch entered status when date changes or refresh is triggered
     useEffect(() => {
-        setEnteredAdmissionIds(getAssessmentsByDate(targetDate));
+        setDailyAssessments(getDailyAssessmentsMap(targetDate));
     }, [targetDate, refreshTrigger]);
 
     // Save Filter
@@ -91,50 +91,20 @@ export const AdvancedPatientList: React.FC<Props> = ({ patients, allAdmissions, 
             const pAdmissions = admissionsByPatient[p.id] || [];
             const { ward, room, status } = getPatientLocationAndStatus(pAdmissions, targetDate);
 
-            // Must be currently admitted (not discharged)
-            // status can be '入院', '入院中', '転棟', '転床', '外泊', '外泊中'
-            // '退院' means discharged ON THAT DAY. If discharged, do we show them?
-            // "デフォルトでは当日に入院している患者" -> Usually implies currently active.
-            // If status is '退院', they are leaving that day. Usually still shown for the day.
-            // If status is '-' (no admission), exclude.
             if (!status || status === '-') return false;
-            
-            // Note: getPatientLocationAndStatus returns '-' if no active admission found.
-            // Wait, implementation returns { ward: null, ... } if no admission.
-            // Wait, I updated patientHelper to return { ward: currentWard || '-', ... }.
-            // Let's re-verify patientHelper.ts return values.
-            // It returns { ward: null, room: null, status: null } if no admission.
-            
-            if (!status) return false;
 
             // 3. Ward Filter
             if (selectedWards.length > 0) {
-                // ward name is stored in 'ward'. ward.code is in 'selectedWards' probably?
-                // Wait, 'getWards' returns objects with 'code' and 'name'.
-                // 'initialWard' in admission is NAME. (Based on dummy data generation: `const ward = INITIAL_WARDS[...].name`).
-                // So I need to match NAME or CODE.
-                // The logical link is likely Name in the current dummy implementation.
-                // Let's check filter logic.
-                
-                // If the data stores Ward Name, we should filter by Ward Name.
-                // But the filter UI might use Code for stability?
-                // Let's assume we filter by Ward Name for now since that is what is stored in Admission.
-                
-                // Find the selected ward objects to get their names
                 const selectedWardNames = wards.filter(w => selectedWards.includes(w.code)).map(w => w.name);
                 if (!selectedWardNames.includes(ward || '')) return false;
             }
 
             // 4. Room Filter
             if (selectedRooms.length > 0) {
-                // Similarly for rooms
                 const selectedRoomNames = rooms.filter(r => selectedRooms.includes(r.code)).map(r => r.name);
                 if (!selectedRoomNames.includes(room || '')) return false;
             }
 
-            // Attach dynamic data to patient object for display? 
-            // We can't mutate patient. We will use the helper again in render or return a wrapper.
-            // But filter uses it.
             return true;
         }).map(p => {
             // Return enriched object for display
@@ -143,6 +113,42 @@ export const AdvancedPatientList: React.FC<Props> = ({ patients, allAdmissions, 
             return { original: p, ...info };
         });
     }, [patients, admissionsByPatient, targetDate, searchTerm, selectedWards, selectedRooms, wards, rooms]);
+
+    // Stats Calculation
+    const stats = useMemo(() => {
+        let targetCount = 0;
+        let unenteredCount = 0;
+
+        filteredPatients.forEach(p => {
+             // Excluded or Overnight are NOT targets for "Unentered" check
+             const isExcluded = p.original.excludeFromAssessment;
+             const isOvernight = p.status?.includes('外泊');
+             
+             if (!isExcluded && !isOvernight) {
+                 targetCount++;
+                 
+                 // Check completeness
+                 const adm = getActiveAdmission(allAdmissions.filter(a => a.patientId === p.original.id), targetDate);
+                 if (adm) {
+                     const data = dailyAssessments[adm.id];
+                     if (!data || !data.items) {
+                         unenteredCount++;
+                     } else {
+                         const isComplete = ITEM_DEFINITIONS.every(item => {
+                             const val = data.items[item.id];
+                             return val !== null && val !== undefined;
+                         });
+                         if (!isComplete) unenteredCount++;
+                     }
+                 } else {
+                     // Should technically not happen if status exists, but treat as unentered if no admission found
+                     unenteredCount++;
+                 }
+             }
+        });
+
+        return { targetCount, unenteredCount };
+    }, [filteredPatients, dailyAssessments, allAdmissions, targetDate]);
 
     // Handlers
     const toggleWard = (code: string) => {
@@ -252,9 +258,19 @@ export const AdvancedPatientList: React.FC<Props> = ({ patients, allAdmissions, 
 
             {/* List */}
             <div className="flex-1 overflow-y-auto">
-                <div className="px-3 py-2 text-xs text-gray-400 font-bold flex justify-between">
-                    <span>対象患者: {filteredPatients.length}名</span>
-                    <span>{targetDate}</span>
+                <div className="px-3 py-2 text-xs flex justify-between items-center bg-gray-50/50 border-b border-gray-100">
+                    {/* Unentered Count Summary (Replica of WardDailyScreen) */}
+                    {stats.unenteredCount > 0 ? (
+                         <span className="text-sm font-bold flex items-baseline gap-1 text-red-800">
+                            未入力:
+                            <span className="text-xl font-black text-red-600">{stats.unenteredCount}</span>
+                            <span className="text-sm text-gray-500 mx-1">/</span>
+                            <span className="text-sm">対象 {stats.targetCount}</span>
+                        </span>
+                    ) : (
+                        <span className="text-sm font-bold text-gray-400">対象患者: {filteredPatients.length}名</span>
+                    )}
+                    <span className="text-gray-400 font-bold">{targetDate}</span>
                 </div>
                 
                 {filteredPatients.length === 0 ? (
@@ -276,20 +292,36 @@ export const AdvancedPatientList: React.FC<Props> = ({ patients, allAdmissions, 
                                            // Priority 1: Excluded from assessment
                                            if (p.original.excludeFromAssessment) {
                                                return (
-                                                   <span className="ml-2 bg-orange-400 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full font-bold pt-[1px]">
+                                                   <span className="ml-2 bg-orange-400 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full font-bold pt-[1px]" title="対象外">
                                                        外
                                                    </span>
                                                );
                                            }
-                                           // Priority 2: Unentered (only if admitted)
-                                           if (!p.status || p.status === '退院' || p.status === '退院済') return null;
+                                           // Priority 2: Unentered (only if admitted & not overnight)
+                                           if (!p.status || p.status.includes('外泊') || p.status === '退院' || p.status === '退院済') return null;
+                                           
                                            const adm = getActiveAdmission(allAdmissions.filter(a => a.patientId === p.original.id), targetDate);
-                                           if (adm && !enteredAdmissionIds.includes(adm.id)) {
-                                               return (
-                                                   <span className="ml-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full font-bold pt-[1px]">
-                                                       未
-                                                   </span>
-                                               );
+                                           if (adm) {
+                                               const data = dailyAssessments[adm.id];
+                                               let isUnentered = false;
+                                               
+                                                if (!data || !data.items) {
+                                                    isUnentered = true;
+                                                } else {
+                                                    const isComplete = ITEM_DEFINITIONS.every(item => {
+                                                        const val = data.items[item.id];
+                                                        return val !== null && val !== undefined;
+                                                    });
+                                                    if (!isComplete) isUnentered = true;
+                                                }
+
+                                               if (isUnentered) {
+                                                   return (
+                                                       <span className="ml-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full font-bold pt-[1px]" title="未入力あるいは未完了">
+                                                           未
+                                                       </span>
+                                                   );
+                                               }
                                            }
                                            return null;
                                         })()}

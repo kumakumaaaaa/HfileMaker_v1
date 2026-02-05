@@ -9,7 +9,7 @@ export interface NursingItemDefinition {
   label: string;
   points: number; // A/C項目の点数、あるいはB項目の最大点数等の参考値
   description?: string;
-  inputType: 'checkbox' | 'radio' | 'select'; // 入力UIタイプ
+  inputType: 'checkbox' | 'radio' | 'select'; // 入力UIタイプ (checkbox should be treated as tri-state: 1/0/null)
   options?: { label: string; value: number; explanation?: string }[]; // 選択肢がある場合 (B項目など)
   hasAssistance?: boolean; // B項目: 介助の実施有無を掛け合わせるか
 }
@@ -174,7 +174,8 @@ export interface DailyAssessment {
   admissionFeeId: string; // 選択された入院料ID (評価基準)
   
   // 評価内容
-  items: Record<string, boolean | number>; 
+  // 評価内容
+  items: Record<string, number | null>; 
 
   // 自動計算結果
   scores: {
@@ -196,11 +197,11 @@ export interface NursingAssessment {
   // scoreA, scoreB, scoreC は計算結果として保持してもよいが、入力そのものは items に保持
   
   /**
-   * 各項目の入力値
    * key: itemId
-   * value: boolean (checkbox) | number (select/points)
+   * value: number (1=Yes, 0=No, select value) | null (Unset)
+   * (Previous boolean support deprecated, migrate to 1/0)
    */
-  items: Record<string, boolean | number>;
+  items: Record<string, number | null>;
 
   // 計算済みスコア (オプション)
   scoreA?: number;

@@ -50,7 +50,34 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
 
   // Validation
-  const isFormValid = identifier && name && birthDate;
+  // Expanded validation to include Admissions and Movements
+  const isFormValid = React.useMemo(() => {
+      if (!identifier || !name || !birthDate) return false;
+      
+      for (const adm of admissions) {
+          if (!adm.admissionDate) return false;
+          if (!adm.initialWard) return false; // Required: Admission Ward
+
+          if (adm.movements) {
+              for (const mov of adm.movements) {
+                  if (!mov.date) return false; // Required: Date (Start Date) for all types
+                  
+                  if (mov.type === 'transfer_ward') {
+                      if (!mov.ward) return false; // Required: Target Ward
+                  }
+                  
+                  if (mov.type === 'transfer_room') {
+                      if (!mov.room) return false; // Required: Target Room
+                  }
+
+                  if (mov.type === 'overnight') {
+                      if (!mov.endDate) return false; // Required: End Date
+                  }
+              }
+          }
+      }
+      return true;
+  }, [identifier, name, birthDate, admissions]);
 
   // Handlers
   const handleSave = () => {
@@ -185,7 +212,7 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div>
-                        <label className="block text-sm font-bold text-gray-500 uppercase mb-2">患者ID <span className="text-red-500">*</span></label>
+                        <label className="block text-base font-bold text-gray-500 uppercase mb-2">患者ID <span className="text-red-500">*</span></label>
                         <input 
                             type="text" 
                             value={identifier}
@@ -195,7 +222,7 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-bold text-gray-500 uppercase mb-2">氏名 <span className="text-red-500">*</span></label>
+                        <label className="block text-base font-bold text-gray-500 uppercase mb-2">氏名 <span className="text-red-500">*</span></label>
                         <input 
                             type="text" 
                             value={name}
@@ -206,7 +233,7 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                     </div>
                     
                     <div>
-                        <label className="block text-sm font-bold text-gray-500 uppercase mb-2">性別</label>
+                        <label className="block text-base font-bold text-gray-500 uppercase mb-2">性別</label>
                         <div className="flex bg-gray-100 rounded-lg p-1 w-fit">
                             {[
                                 { val: '1', label: '男性' },
@@ -229,7 +256,7 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                     </div>
 
                     <div>
-                        <label className="block text-sm font-bold text-gray-500 uppercase mb-2">生年月日 <span className="text-red-500">*</span></label>
+                        <label className="block text-base font-bold text-gray-500 uppercase mb-2">生年月日 <span className="text-red-500">*</span></label>
                         <input 
                             type="date" 
                             value={birthDate}
@@ -242,7 +269,7 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
 
                     {/* Exclude Flag Toggle */}
                     <div className="md:col-span-2">
-                        <label className="block text-sm font-bold text-gray-500 uppercase mb-2">評価対象区分</label>
+                        <label className="block text-base font-bold text-gray-500 uppercase mb-2">評価対象区分</label>
                         <div className="flex gap-4">
                             <button
                                 onClick={() => setExcludeFromAssessment(false)}
@@ -275,7 +302,7 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                     <div className="md:col-span-2 border-t border-gray-100 my-2"></div>
 
                     <div>
-                        <label className="block text-sm font-bold text-gray-500 uppercase mb-2">郵便番号</label>
+                        <label className="block text-base font-bold text-gray-500 uppercase mb-2">郵便番号</label>
                         <div className="flex gap-2">
                             <input 
                                 type="text" 
@@ -295,7 +322,7 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                         </div>
                     </div>
                     <div className="md:col-span-2">
-                        <label className="block text-sm font-bold text-gray-500 uppercase mb-2">住所</label>
+                        <label className="block text-base font-bold text-gray-500 uppercase mb-2">住所</label>
                         <input 
                             type="text" 
                             value={address}
@@ -306,7 +333,7 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                     </div>
 
                     <div className="md:col-span-2">
-                        <label className="block text-sm font-bold text-gray-500 uppercase mb-2">メモ</label>
+                        <label className="block text-base font-bold text-gray-500 uppercase mb-2">メモ</label>
                         <input 
                             type="text"
                             value={memo}
@@ -319,7 +346,7 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
             </div>
 
             {/* Admissions - Right Side */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 w-[500px] shrink-0 self-start">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 w-[600px] shrink-0 self-start">
                 <div className="flex justify-between items-center mb-6 border-b pb-4">
                     <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                         <Activity className="w-6 h-6 text-gray-500" /> 入院歴
@@ -352,16 +379,16 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                                 {/* Section 1: Admission Start Info */}
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div>
-                                        <label className="block text-sm font-bold text-gray-700 mb-1">入院日 <span className="text-red-500">*</span></label>
+                                        <label className="block text-base font-bold text-gray-700 mb-1">入院日 <span className="text-red-500">*</span></label>
                                         <input 
                                             type="date"
                                             value={adm.admissionDate}
                                             onChange={(e) => updateAdmission(adm.id, 'admissionDate', e.target.value)}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                                            className="w-full px-3 py-2 text-lg h-12 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-bold text-gray-700 mb-1">入院時病棟</label>
+                                        <label className="block text-base font-bold text-gray-700 mb-1">入院時病棟 <span className="text-red-500">*</span></label>
                                         <select
                                             value={adm.initialWard || ''}
                                             onChange={(e) => {
@@ -371,7 +398,7 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                                                     a.id === adm.id ? { ...a, initialWard: newWard, initialRoom: '' } : a
                                                 ));
                                             }}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                                            className="w-full px-3 py-2 text-lg h-12 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                                         >
                                             <option value="">選択...</option>
                                             {wards.filter(w => isAvailable(w) || w.name === adm.initialWard).map(w => (
@@ -380,11 +407,11 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-bold text-gray-700 mb-1">入院時病室</label>
+                                        <label className="block text-base font-bold text-gray-700 mb-1">入院時病室</label>
                                         <select 
                                             value={adm.initialRoom || ''}
                                             onChange={(e) => updateAdmission(adm.id, 'initialRoom', e.target.value)}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                                            className="w-full px-3 py-2 text-lg h-12 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                                             disabled={!adm.initialWard}
                                         >
                                             <option value="">選択...</option>
@@ -409,7 +436,7 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                                         </h4>
                                         <button
                                             onClick={() => addMovement(adm.id)}
-                                            className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1.5 rounded font-bold transition-colors flex items-center gap-1"
+                                            className="text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1.5 rounded font-bold transition-colors flex items-center gap-1"
                                         >
                                             <Plus className="w-3 h-3" /> 追加
                                         </button>
@@ -421,11 +448,11 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                                                 <div key={mov.id} className="grid grid-cols-12 gap-2 items-end bg-gray-50/50 p-3 rounded border border-gray-200">
                                                     {/* Type */}
                                                     <div className="col-span-3">
-                                                        <label className="block text-xs text-gray-500 mb-1">区分</label>
+                                                        <label className="block text-sm text-gray-500 mb-1">区分</label>
                                                         <select 
                                                             value={mov.type} 
                                                             onChange={e => updateMovement(adm.id, mov.id, 'type', e.target.value)}
-                                                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded bg-white"
+                                                            className="w-full px-2 py-1.5 text-base border border-gray-300 rounded bg-white"
                                                         >
                                                             <option value="transfer_ward">転棟</option>
                                                             <option value="transfer_room">転床</option>
@@ -435,14 +462,14 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
 
                                                     {/* Date */}
                                                     <div className="col-span-3">
-                                                        <label className="block text-xs text-gray-500 mb-1">
-                                                            {mov.type === 'overnight' ? '開始日' : '異動日'}
+                                                        <label className="block text-sm text-gray-500 mb-1">
+                                                            {mov.type === 'overnight' ? '開始日' : '移動日'} <span className="text-red-500">*</span>
                                                         </label>
                                                         <input 
                                                             type="date" 
                                                             value={mov.date} 
                                                             onChange={e => updateMovement(adm.id, mov.id, 'date', e.target.value)}
-                                                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
+                                                            className="w-full px-2 py-1.5 text-base border border-gray-300 rounded"
                                                         />
                                                     </div>
 
@@ -451,7 +478,9 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                                                         {mov.type.startsWith('transfer') && (
                                                             <>
                                                                     <div>
-                                                                        <label className="block text-xs text-gray-500 mb-1">移動先病棟</label>
+                                                                        <label className="block text-sm text-gray-500 mb-1">
+                                                                            移動先病棟 {mov.type === 'transfer_ward' && <span className="text-red-500">*</span>}
+                                                                        </label>
                                                                         <select 
                                                                             value={mov.ward || ''}
                                                                             onChange={e => {
@@ -468,7 +497,7 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                                                                                 }));
                                                                             }}
                                                                             disabled={mov.type === 'transfer_room'}
-                                                                            className={`w-full px-2 py-1.5 text-sm border border-gray-300 rounded bg-white ${mov.type === 'transfer_room' ? 'bg-gray-100 text-gray-400' : ''}`}
+                                                                            className={`w-full px-2 py-1.5 text-base border border-gray-300 rounded bg-white ${mov.type === 'transfer_room' ? 'bg-gray-100 text-gray-400' : ''}`}
                                                                         >
                                                                             <option value="">{mov.type === 'transfer_room' ? '(変更なし)' : '選択...'}</option>
                                                                             {wards.filter(w => isAvailable(w) || w.name === mov.ward).map(w => (
@@ -477,11 +506,13 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
                                                                         </select>
                                                                     </div>
                                                                     <div>
-                                                                    <label className="block text-xs text-gray-500 mb-1">移動先病室</label>
+                                                                    <label className="block text-sm text-gray-500 mb-1">
+                                                                        移動先病室 {mov.type === 'transfer_room' && <span className="text-red-500">*</span>}
+                                                                    </label>
                                                                     <select 
                                                                         value={mov.room || ''}
                                                                         onChange={e => updateMovement(adm.id, mov.id, 'room', e.target.value)}
-                                                                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded bg-white"
+                                                                        className="w-full px-2 py-1.5 text-base border border-gray-300 rounded bg-white"
                                                                     >
                                                                         <option value="">選択...</option>
                                                                         {(() => {
@@ -506,12 +537,12 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
 
                                                         {mov.type === 'overnight' && (
                                                             <div className="col-span-2">
-                                                                <label className="block text-xs text-gray-500 mb-1">終了日 (任意)</label>
+                                                                <label className="block text-xs text-gray-500 mb-1">終了日 <span className="text-red-500">*</span></label>
                                                                 <input 
                                                                     type="date" 
                                                                     value={mov.endDate || ''} 
                                                                     onChange={e => updateMovement(adm.id, mov.id, 'endDate', e.target.value)}
-                                                                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
+                                                                    className="w-full px-2 py-1.5 text-base border border-gray-300 rounded"
                                                                 />
                                                             </div>
                                                         )}
@@ -539,15 +570,15 @@ export const PatientEditForm: React.FC<PatientEditFormProps> = ({
 
                                 {/* Section 3: Discharge */}
                                 <div className="max-w-xs">
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">退院日</label>
+                                    <label className="block text-base font-bold text-gray-700 mb-1">退院日</label>
                                     <input 
                                         type="date"
                                         value={adm.dischargeDate || ''}
                                         onChange={(e) => updateAdmission(adm.id, 'dischargeDate', e.target.value)}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                                        className="w-full px-3 py-2 text-lg border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
                                         placeholder="未定/入院中"
                                     />
-                                    <p className="text-xs text-gray-500 mt-1 ml-1">※ 空欄の場合は入院中として扱われます</p>
+                                    <p className="text-sm text-gray-500 mt-1 ml-1">※ 空欄の場合は入院中として扱われます</p>
                                 </div>
                             </div>
                         </div>

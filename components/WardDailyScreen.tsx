@@ -71,14 +71,16 @@ export const WardDailyScreen: React.FC<WardDailyScreenProps> = ({ onNavigateToPa
         const cell = document.querySelector(`[data-cell-adm="${focusedCell.admissionId}"][data-cell-item="${focusedCell.item.id}"]`);
         if (cell) {
             const rect = cell.getBoundingClientRect();
-            // Position popup to the right of the cell, or below if space is tight
-            let x = rect.right + 5;
-            let y = rect.top + window.scrollY;
+            // Position popup BELOW the cell (aligned left)
+            let x = rect.left;
+            let y = rect.bottom + window.scrollY;
             
-            // Basic screen boundary check (Popup width approx 320px)
+            // Boundary checks
+            // If it goes off right edge
             if (x + 320 > window.innerWidth) {
-                x = rect.left - 325; // Flip to left
+                x = window.innerWidth - 325;
             }
+            // If it goes off bottom edge? (Maybe flip up? nice to have but simple first)
             
             setPopupPosition({ x, y });
         }
@@ -259,11 +261,124 @@ export const WardDailyScreen: React.FC<WardDailyScreenProps> = ({ onNavigateToPa
         }, 100);
     };
 
+    // --- Focus & Keyboard Logic ---
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (!focusedCell) return;
+            if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+            // Navigation
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                moveFocus(-1, 0);
+            } else if (e.key === 'ArrowDown' || e.key === 'Enter') {
+                e.preventDefault();
+                moveFocus(1, 0);
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                moveFocus(0, -1);
+            } else if (e.key === 'ArrowRight' || e.key === 'Tab') {
+                e.preventDefault();
+                moveFocus(0, 1);
+            } else if (['0', '1', '2'].includes(e.key)) {
+                // Numeric Input
+                // Check if item accepts input
+                const { admissionId, item } = focusedCell;
+                const val = parseInt(e.key);
+                
+                // Allow input if no popup is strictly blocking (though we might close popup on type)
+                // For B-items (popup), maybe we shouldn't allow direct number input unless it's a simple score?
+                // But MonthlyMatrixView allows it.
+                // Exception: Checkbox items (1/0)
+                
+                if (item.inputType === 'checkbox') {
+                     e.preventDefault();
+                     if (val === 1) applyValueAndAdvance(1);
+                     if (val === 0) applyValueAndAdvance(0);
+                } else {
+                    // For number inputs OR items with options (B items), allow direct input if it matches valid logic
+                    // Usually B items are 0, 1, 2.
+                    // If item has options, we can check if 'val' is a valid option value?
+                    // Or just blindly allow 0,1,2 as they are standard scores.
+                    // Let's allow it.
+                    e.preventDefault();
+                    applyValueAndAdvance(val);
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [focusedCell, displayedPatients]);
+
+    const moveFocus = (rowDelta: number, colDelta: number) => {
+        if (!focusedCell) return;
+        
+        // Find current indices
+        const currentRowIdx = displayedPatients.findIndex(p => p.admission.id === focusedCell.admissionId);
+        const currentColIdx = ITEM_DEFINITIONS.findIndex(i => i.id === focusedCell.item.id);
+        
+        if (currentRowIdx === -1 || currentColIdx === -1) return;
+
+        let nextRowIdx = currentRowIdx + rowDelta;
+        let nextColIdx = currentColIdx + colDelta;
+
+        // Boundary checks
+        if (nextRowIdx < 0) nextRowIdx = 0;
+        if (nextRowIdx >= displayedPatients.length) nextRowIdx = displayedPatients.length - 1;
+        
+        if (nextColIdx < 0) {
+            // Wrap to previous row's last item? Or stop?
+            // Let's stop at edge for now
+            nextColIdx = 0;
+        }
+        if (nextColIdx >= ITEM_DEFINITIONS.length) {
+            nextColIdx = ITEM_DEFINITIONS.length - 1;
+        }
+        
+        // Skip rows that are not editable?
+        // Current requirements don't explicitly say we must skip, but it's good UX.
+        // displayedPatients includes excluded/overnight patients.
+        // Let's just focus them, visual indication shows they are read-only.
+        
+        const nextPatient = displayedPatients[nextRowIdx];
+        const nextItem = ITEM_DEFINITIONS[nextColIdx];
+        
+        setFocusedCell({
+            admissionId: nextPatient.admission.id,
+            item: nextItem
+        });
+    };
+
+    const applyValueAndAdvance = (val: number) => {
+        if (!focusedCell) return;
+        
+        // Check editability logic again
+        const row = displayedPatients.find(p => p.admission.id === focusedCell.admissionId);
+        if (!row) return;
+        
+        const isOvernight = row.status?.includes('外泊');
+        const isExcluded = row.patient.excludeFromAssessment;
+        const isFuture = targetDate > getLocalDateString();
+        if (isFuture || isExcluded || isOvernight) return;
+
+        handleValueChange(focusedCell.admissionId, focusedCell.item.id, val);
+        // Move to next row (Enter-like behavior) or next col?
+        // User requested: Input -> Slide Right (Next Item)
+        moveFocus(0, 1); 
+    };
+
     // --- Editing Logic ---
-    const handleValueChange = (admissionId: string, itemId: string, value: boolean | number, assistValue?: number) => {
+    const handleValueChange = (admissionId: string, itemId: string, value: number | null, assistValue?: number) => {
         setAssessments(prev => {
             const current = prev[admissionId];
             const newItems = { ...current.items, [itemId]: value };
+            
+            // Clean up if value is null (optional, or explicit null)
+            if (value === null) {
+                // Keep explicitly null to indicate unset if needed, or remove key?
+                // Type allows null. Let's keep null.
+            }
             
             // Update assistance if provided
             if (typeof assistValue === 'number') {
@@ -430,20 +545,60 @@ export const WardDailyScreen: React.FC<WardDailyScreenProps> = ({ onNavigateToPa
                 <button 
                     onClick={handleSearch}
                     disabled={!selectedWard || isLoading}
-                    className="ml-auto flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 transition-colors font-bold shadow-sm"
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-all font-bold shadow-sm"
                 >
                     {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
                     検索
                 </button>
+
+                {/* Unentered Count Summary */}
+                {displayedPatients.length > 0 && (() => {
+                    const targetRows = displayedPatients.filter(row => {
+                        const isExcluded = row.patient.excludeFromAssessment;
+                        const isOvernight = row.status?.includes('外泊');
+                        return !isExcluded && !isOvernight;
+                    });
+                    const unenteredCount = targetRows.filter(row => {
+                        const data = assessments[row.admission.id];
+                        // Check if ALL items are filled
+                        // If data is missing OR any item is null/undefined, it's incomplete
+                        if (!data || !data.items) return true;
+                        
+                        const isComplete = ITEM_DEFINITIONS.every(item => {
+                            const val = data.items[item.id];
+                            return val !== null && val !== undefined;
+                        });
+                        return !isComplete;
+                    }).length;
+                    
+                    const isAllEntered = unenteredCount === 0;
+
+                    return (
+                        <div className={`ml-4 flex items-center px-4 py-2 rounded border gap-3 transition-colors ${!isAllEntered ? 'bg-red-50 border-red-200 shadow-sm' : 'bg-green-50 border-green-200'}`}>
+                            <span className={`text-sm font-bold flex items-baseline gap-1 ${!isAllEntered ? 'text-red-800' : 'text-green-800'}`}>
+                                未入力: 
+                                <span className={`text-xl ${!isAllEntered ? 'font-black text-red-600' : 'text-green-600'}`}>{unenteredCount}</span>
+                                <span className="text-sm text-gray-500 mx-1">/</span>
+                                <span className="text-sm">対象 {targetRows.length}</span>
+                            </span>
+                        </div>
+                    );
+                })()}
             </div>
+
+            {/* Bulk Copy Button (Positioned at top right of table container or header?) 
+                Actually header is flex-wrap, so it flows. 
+                Let's put it at the very end of the header using ml-auto if not already. 
+            */} 
+            {/* Removed duplicate button as per user request */}
 
             {/* --- Table Container --- */}
             <div className="flex-1 overflow-auto relative">
                 <table className="border-collapse w-full min-w-max">
-                        <thead className="bg-gray-100 z-20 sticky top-0 font-bold text-center border-b border-gray-300 shadow-md">
+                        <thead className="bg-gray-100 z-40 sticky top-0 font-bold text-center border-b border-gray-300 shadow-md">
                             {/* Column Group Headers */}
                             <tr>
-                                <th className="sticky left-0 top-0 z-30 bg-gray-100 border border-gray-300 p-2 min-w-[250px] text-lg font-bold text-gray-700" rowSpan={2}>
+                                <th className="sticky left-0 top-0 z-50 bg-gray-100 border border-gray-300 p-2 min-w-[250px] text-lg font-bold text-gray-700" rowSpan={2} style={{ backgroundColor: '#f3f4f6' }}>
                                     患者情報
                                 </th>
                                 <th colSpan={itemsGrouped.a.length} className="bg-blue-100 border border-gray-300 p-2 text-blue-900 text-lg font-bold">A項目</th>
@@ -476,10 +631,16 @@ export const WardDailyScreen: React.FC<WardDailyScreenProps> = ({ onNavigateToPa
                             // 3. Overnight Status
                             const isEditable = !(targetDate > getLocalDateString()) && !isExcluded && !isOvernight;
 
+                            // Check completeness for Badge
+                            const isComplete = data && data.items && ITEM_DEFINITIONS.every(item => {
+                                const val = data.items[item.id];
+                                return val !== null && val !== undefined;
+                            });
+
                             return (
                                 <tr key={row.admission.id} className={`hover:bg-gray-50 ${isDirty ? 'bg-yellow-50' : ''} ${!isEditable ? 'bg-gray-100' : ''}`}>
                                     {/* Patient Info Column */}
-                                    <td className="sticky left-0 z-20 bg-white border border-gray-300 p-2 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                    <td className="sticky left-0 z-30 bg-white border border-gray-300 p-2 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]" style={{ backgroundColor: 'white' }}>
                                         <div className="flex flex-col">
                                             <div className="flex items-center gap-2 mb-1">
                                                 <div className="flex flex-col min-w-0">
@@ -500,9 +661,11 @@ export const WardDailyScreen: React.FC<WardDailyScreenProps> = ({ onNavigateToPa
                                                         </button>
                                                     </div>
                                                 </div>
-                                                {isSevere && <span className="text-[10px] bg-red-100 text-red-600 px-1 rounded font-bold border border-red-200 whitespace-nowrap">重症</span>}
                                                 {isExcluded && <span className="text-[10px] bg-gray-200 text-gray-500 px-1 rounded font-bold border border-gray-300">対象外</span>}
                                                 {isOvernight && <span className="text-[10px] bg-orange-100 text-orange-600 px-1 rounded font-bold border border-orange-200">外泊</span>}
+                                                {!isExcluded && !isOvernight && !isComplete && (
+                                                    <span className="text-[10px] bg-blue-100 text-blue-600 px-1 rounded font-bold border border-blue-200 whitespace-nowrap">未入力</span>
+                                                )}
                                             </div>
                                             <div className="flex items-center gap-2 text-xs text-gray-500">
                                                 <span className="font-mono bg-gray-100 px-1 rounded">{row.room || '-'}</span>
@@ -516,29 +679,49 @@ export const WardDailyScreen: React.FC<WardDailyScreenProps> = ({ onNavigateToPa
                                     {ITEM_DEFINITIONS.map(item => {
                                         const val = data?.items?.[item.id];
                                         const assistVal = data?.items?.[`${item.id}_assist`];
-                                        const isActive = focusedCell?.admissionId === row.admission.id && focusedCell?.item.id === item.id;
+                                        const isFocused = focusedCell?.admissionId === row.admission.id && focusedCell?.item.id === item.id;
                                         
                                         return (
                                             <td 
                                                 key={item.id} 
-                                                className={`border border-gray-300 text-center p-0 h-10 relative ${isActive ? 'bg-yellow-100 ring-2 ring-blue-500 z-10' : ''}`}
+                                                className={`border border-gray-300 text-center p-0 h-10 relative 
+                                                    ${isFocused ? 'ring-2 ring-blue-500 z-10' : ''}
+                                                    ${isDirty ? 'bg-yellow-50' : ''}
+                                                `}
                                                 data-cell-adm={row.admission.id}
                                                 data-cell-item={item.id}
                                                 onClick={() => {
-                                                    if (isEditable && item.category === 'b') {
+                                                    if (isEditable) {
                                                         setFocusedCell({ admissionId: row.admission.id, item });
                                                     }
                                                 }}
                                             >
                                                 {item.inputType === 'checkbox' ? (
-                                                    <div className="flex items-center justify-center h-full"> 
-                                                        <input 
-                                                            type="checkbox"
-                                                            checked={val === true}
-                                                            onChange={(e) => handleValueChange(row.admission.id, item.id, e.target.checked)}
+                                                    <div className="flex items-center justify-center h-full w-full"> 
+                                                        <button 
+                                                            onClick={(e) => {
+                                                                e.stopPropagation(); // Prevent re-triggering cell click
+                                                                setFocusedCell({ admissionId: row.admission.id, item });
+
+                                                                if (!isEditable) return;
+                                                                // Cycle: null -> 1 -> 0 -> null
+                                                                let nextVal: number | null = null;
+                                                                if (val === null || val === undefined) nextVal = 1;
+                                                                else if (val > 0) nextVal = 0;
+                                                                else nextVal = null; // 0 -> null
+                                                                
+                                                                handleValueChange(row.admission.id, item.id, nextVal);
+                                                            }}
                                                             disabled={!isEditable}
-                                                            className={`w-5 h-5 accent-blue-600 ${!isEditable ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
-                                                        />
+                                                            className={`w-full h-full flex items-center justify-center transition-colors
+                                                                ${!isEditable ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-gray-100'}
+                                                                ${isFocused ? 'bg-yellow-100' : ''}
+                                                            `}
+                                                        >
+                                                            {(val === 1) && <span className="text-blue-600 font-bold text-sm">実施</span>}
+                                                            {(val === 0) && <span className="text-gray-400 font-bold text-xs">未実施</span>}
+                                                            {(val === null || val === undefined) && <span className="text-lg leading-none text-gray-300">-</span>}
+                                                        </button>
                                                     </div>
                                                 ) : (
                                                     // B-Item: Button style for popup trigger
@@ -546,6 +729,7 @@ export const WardDailyScreen: React.FC<WardDailyScreenProps> = ({ onNavigateToPa
                                                         className={`w-full h-full flex items-center justify-center font-mono text-base 
                                                             ${!isEditable ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50'}
                                                             ${(typeof val === 'number') ? 'text-gray-900 font-bold' : 'text-gray-300'}
+                                                            ${isFocused ? 'bg-yellow-100' : ''}
                                                         `}
                                                     >
                                                         {typeof val === 'number' ? val : '-'}
@@ -585,9 +769,9 @@ export const WardDailyScreen: React.FC<WardDailyScreenProps> = ({ onNavigateToPa
                     {/* Bulk Copy Button - Safe to show? Yes, logic handles checks. */}
                     <button 
                         onClick={handleCopyPreviousDay}
-                        disabled={displayedPatients.length === 0 || isLoading}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 transition-colors text-xs font-bold disabled:opacity-50"
-                        title="表示中の患者について前日のデータをコピーします"
+                        disabled={displayedPatients.length === 0 || isLoading || targetDate > getLocalDateString()}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 transition-colors text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={targetDate > getLocalDateString() ? "未来日のためコピーできません" : "表示中の患者について前日のデータをコピーします"}
                     >
                         <Copy className="w-3 h-3" />
                         前日コピー
@@ -650,16 +834,36 @@ export const WardDailyScreen: React.FC<WardDailyScreenProps> = ({ onNavigateToPa
             )}
 
             {/* --- Cell Edit Popup --- */}
-            {focusedCell && popupPosition && (
-                <CellEditPopup 
-                    item={focusedCell.item}
-                    currentValue={assessments[focusedCell.admissionId]?.items?.[focusedCell.item.id] as any}
-                    currentAssistValue={assessments[focusedCell.admissionId]?.items?.[`${focusedCell.item.id}_assist`] as any}
-                    position={popupPosition}
-                    onSave={(val, assistVal) => handleValueChange(focusedCell.admissionId, focusedCell.item.id, val, assistVal)}
-                    onClose={() => setFocusedCell(null)}
-                />
-            )}
+            {focusedCell && popupPosition && (() => {
+                 // Safety Check: Only show popup if row is editable
+                 const row = displayedPatients.find(p => p.admission.id === focusedCell.admissionId);
+                 if (!row) return null;
+                 
+                 const isExcluded = row.patient.excludeFromAssessment;
+                 const isOvernight = row.status?.includes('外泊');
+                 const isFuture = targetDate > getLocalDateString();
+                 const isEditable = !isFuture && !isExcluded && !isOvernight;
+                 
+                 if (!isEditable) return null;
+
+                 // UX: Don't show popup for Checkbox items (A/C items)
+                 if (focusedCell.item.inputType === 'checkbox') return null;
+
+                 return (
+                    <CellEditPopup 
+                        item={focusedCell.item}
+                        currentValue={(assessments[focusedCell.admissionId]?.items?.[focusedCell.item.id] as number | null) ?? null}
+                        currentAssistValue={(assessments[focusedCell.admissionId]?.items?.[`${focusedCell.item.id}_assist`] as number | undefined)}
+                        position={popupPosition}
+                        onSave={(val, assistVal) => {
+                            handleValueChange(focusedCell.admissionId, focusedCell.item.id, val, assistVal);
+                            // Advance focus Right (Next Item)
+                            moveFocus(0, 1);
+                        }}
+                        onClose={() => setFocusedCell(null)}
+                    />
+                 );
+            })()}
         </div>
     );
 };

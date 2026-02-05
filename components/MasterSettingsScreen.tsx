@@ -26,9 +26,56 @@ export const MasterSettingsScreen: React.FC = () => {
     }, []);
 
     const refreshData = () => {
-        setWards(getWards());
-        setRooms(getRooms());
-        setUsers(getUsers());
+        let currentWards = getWards();
+        let currentRooms = getRooms();
+        let currentUsers = getUsers();
+
+        // --- Data Migration (Auto-fix Start Dates) ---
+        let wardsChanged = false;
+        let roomsChanged = false;
+        
+        const defaultStartDate = '2024-04-01'; // Fiscal Year Start
+
+        currentWards = currentWards.map(w => {
+            if (!w.startDate) {
+                wardsChanged = true;
+                return { ...w, startDate: defaultStartDate };
+            }
+            return w;
+        });
+
+        currentRooms = currentRooms.map(r => {
+            if (!r.startDate) {
+                roomsChanged = true;
+                return { ...r, startDate: defaultStartDate };
+            }
+            return r;
+        });
+
+        if (wardsChanged) {
+            currentWards.forEach(w => saveWard(w)); // Iterate save to persist
+        }
+        if (roomsChanged) {
+            currentRooms.forEach(r => saveRoom(r));
+        }
+
+        // --- User Role Fix (Facility Manager -> Evaluator) ---
+        let usersChanged = false;
+        currentUsers = currentUsers.map(u => {
+            if (u.authority === '施設管理者アカウント' && u.role === '管理者') {
+                usersChanged = true;
+                return { ...u, role: '評価者' };
+            }
+            return u;
+        });
+
+        if (usersChanged) {
+            currentUsers.forEach(u => saveUser(u));
+        }
+
+        setWards(currentWards);
+        setRooms(currentRooms);
+        setUsers(currentUsers);
     };
 
     // --- Helper for Filtering ---
@@ -51,7 +98,9 @@ export const MasterSettingsScreen: React.FC = () => {
 
     // --- Ward Handlers ---
     const handleAddWard = () => {
-        setEditingWard({ code: '', name: '', type: '一般病棟', startDate: '', endDate: '' });
+        // Auto-generate Code (ID)
+        const newCode = `W_${Date.now()}`;
+        setEditingWard({ code: newCode, name: '', type: '一般病棟', startDate: '', endDate: '' });
         setIsEditing(true);
     };
 
@@ -61,7 +110,12 @@ export const MasterSettingsScreen: React.FC = () => {
     };
 
     const handleSaveWard = () => {
-        if (!editingWard || !editingWard.code || !editingWard.name) return;
+        // Validation: Code is now auto-generated/internal, so we check existence but user doesn't input it.
+        // We still check name, etc.
+        if (!editingWard || !editingWard.code || !editingWard.name || !editingWard.type || !editingWard.startDate) {
+            alert('必須項目（名称、タイプ、開始日）を入力してください');
+            return;
+        }
         saveWard(editingWard);
         setIsEditing(false);
         setEditingWard(null);
@@ -76,7 +130,9 @@ export const MasterSettingsScreen: React.FC = () => {
 
     // --- Room Handlers ---
     const handleAddRoom = () => {
-        setEditingRoom({ code: '', wardCode: '', name: '', startDate: '', endDate: '' });
+        // Auto-generate Code (ID)
+        const newCode = `R_${Date.now()}`;
+        setEditingRoom({ code: newCode, wardCode: '', name: '', startDate: '', endDate: '' });
         setIsEditing(true);
     };
 
@@ -86,7 +142,10 @@ export const MasterSettingsScreen: React.FC = () => {
     };
 
     const handleSaveRoom = () => {
-        if (!editingRoom || !editingRoom.code || !editingRoom.name) return;
+        if (!editingRoom || !editingRoom.code || !editingRoom.name || !editingRoom.wardCode || !editingRoom.startDate) {
+             alert('必須項目（名称、所属病棟、開始日）を入力してください');
+             return;
+        }
         saveRoom(editingRoom);
         setIsEditing(false);
         setEditingRoom(null);
@@ -120,7 +179,7 @@ export const MasterSettingsScreen: React.FC = () => {
 
     const handleSaveUser = () => {
         if (!editingUser || !editingUser.userId || !editingUser.name || !editingUser.password) {
-            alert('必須項目を入力してください');
+            alert('必須項目（ユーザーID、氏名、パスワード）を入力してください');
             return;
         }
         // Prevent creating new System Admins
@@ -182,7 +241,7 @@ export const MasterSettingsScreen: React.FC = () => {
                             <>
                                 {activeTab === 'room' && (
                                     <div className="mb-4">
-                                        <label className="block text-sm font-bold text-gray-500 mb-1">所属病棟</label>
+                                        <label className="block text-sm font-bold text-gray-500 mb-1">所属病棟<span className="text-red-500 ml-1">*</span></label>
                                         <select
                                             className="w-full border p-2 rounded text-lg"
                                             value={editingRoom?.wardCode || ''}
@@ -195,36 +254,27 @@ export const MasterSettingsScreen: React.FC = () => {
                                         </select>
                                     </div>
                                 )}
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-500 mb-1">コード</label>
-                                        <input 
-                                            className="w-full border p-2 rounded text-lg font-mono"
-                                            value={activeTab === 'ward' ? editingWard?.code : editingRoom?.code}
-                                            onChange={e => activeTab === 'ward'
-                                                ? setEditingWard(prev => prev ? ({...prev, code: e.target.value}) : null)
-                                                : setEditingRoom(prev => prev ? ({...prev, code: e.target.value}) : null)
-                                            }
-                                            placeholder="W001"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-500 mb-1">名称</label>
-                                        <input 
-                                            className="w-full border p-2 rounded text-lg"
-                                            value={activeTab === 'ward' ? editingWard?.name : editingRoom?.name}
-                                            onChange={e => activeTab === 'ward' 
-                                                ? setEditingWard(prev => prev ? ({...prev, name: e.target.value}) : null)
-                                                : setEditingRoom(prev => prev ? ({...prev, name: e.target.value}) : null)
-                                            }
-                                            placeholder="名称"
-                                        />
-                                    </div>
+                                {/* Code Input removed (Auto-generated) */}
+                                {/* 
+                                   If needed for debugging, we could show it as read-only text:
+                                   <div className="text-xs text-gray-400 font-mono mb-2">ID: {activeTab === 'ward' ? editingWard?.code : editingRoom?.code}</div>
+                                */}
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-500 mb-1">名称<span className="text-red-500 ml-1">*</span></label>
+                                    <input 
+                                        className="w-full border p-2 rounded text-lg"
+                                        value={activeTab === 'ward' ? editingWard?.name : editingRoom?.name}
+                                        onChange={e => activeTab === 'ward' 
+                                            ? setEditingWard(prev => prev ? ({...prev, name: e.target.value}) : null)
+                                            : setEditingRoom(prev => prev ? ({...prev, name: e.target.value}) : null)
+                                        }
+                                        placeholder="名称"
+                                    />
                                 </div>
                                 
                                 {activeTab === 'ward' && (
                                     <div>
-                                        <label className="block text-sm font-bold text-gray-500 mb-1">病棟タイプ</label>
+                                        <label className="block text-sm font-bold text-gray-500 mb-1">病棟タイプ<span className="text-red-500 ml-1">*</span></label>
                                         <select 
                                             className="w-full border p-2 rounded text-lg"
                                             value={editingWard?.type}
@@ -239,7 +289,7 @@ export const MasterSettingsScreen: React.FC = () => {
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-bold text-gray-500 mb-1">開始日</label>
+                                        <label className="block text-sm font-bold text-gray-500 mb-1">開始日<span className="text-red-500 ml-1">*</span></label>
                                         <input 
                                             type="date"
                                             className="w-full border p-2 rounded text-lg"
@@ -271,8 +321,8 @@ export const MasterSettingsScreen: React.FC = () => {
                             <>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-bold text-gray-500 mb-1">ユーザーID</label>
-                                        <input 
+                                        <label className="block text-sm font-bold text-gray-500 mb-1">ユーザーID<span className="text-red-500 ml-1">*</span></label>
+                                        <input  
                                             className="w-full border p-2 rounded text-lg font-mono disabled:bg-gray-100 disabled:text-gray-400"
                                             value={editingUser.userId}
                                             onChange={e => setEditingUser(prev => prev ? ({...prev, userId: e.target.value}) : null)}
@@ -281,7 +331,7 @@ export const MasterSettingsScreen: React.FC = () => {
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-bold text-gray-500 mb-1">氏名</label>
+                                        <label className="block text-sm font-bold text-gray-500 mb-1">氏名<span className="text-red-500 ml-1">*</span></label>
                                         <input 
                                             className="w-full border p-2 rounded text-lg"
                                             value={editingUser.name}
@@ -291,7 +341,7 @@ export const MasterSettingsScreen: React.FC = () => {
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-bold text-gray-500 mb-1">パスワード</label>
+                                    <label className="block text-sm font-bold text-gray-500 mb-1">パスワード<span className="text-red-500 ml-1">*</span></label>
                                     <input 
                                         type="password"
                                         className="w-full border p-2 rounded text-lg font-mono"
@@ -310,7 +360,6 @@ export const MasterSettingsScreen: React.FC = () => {
                                         >
                                             <option value="入力者">入力者</option>
                                             <option value="評価者">評価者</option>
-                                            <option value="管理者">管理者</option>
                                         </select>
                                     </div>
                                     <div>
@@ -447,7 +496,7 @@ export const MasterSettingsScreen: React.FC = () => {
                     <table className="w-full text-left">
                         <thead className="bg-gray-100 text-gray-600 font-bold border-b border-gray-200">
                             <tr>
-                                <th className="px-6 py-3">ID/コード</th>
+                                {activeTab === 'user' && <th className="px-6 py-3">ユーザーID</th>}
                                 {activeTab === 'room' && <th className="px-6 py-3">所属病棟</th>}
                                 <th className="px-6 py-3">名称</th>
                                 {activeTab === 'ward' && <th className="px-6 py-3">タイプ</th>}
@@ -466,7 +515,6 @@ export const MasterSettingsScreen: React.FC = () => {
                             {/* Ward Rows */}
                             {activeTab === 'ward' && displayWards.map(w => (
                                 <tr key={w.code} className="hover:bg-blue-50/50">
-                                    <td className="px-6 py-4 font-mono">{w.code}</td>
                                     <td className="px-6 py-4 font-bold">{w.name}</td>
                                     <td className="px-6 py-4">
                                         <span className="bg-gray-200 px-2 py-1 rounded text-sm text-gray-700">{w.type}</span>
@@ -475,7 +523,6 @@ export const MasterSettingsScreen: React.FC = () => {
                                     <td className="px-6 py-4 font-mono text-gray-500">{w.endDate || '-'}</td>
                                     <td className="px-6 py-4 flex justify-center gap-3">
                                         <button onClick={() => handleEditWard(w)} className="text-blue-600 hover:bg-blue-100 p-2 rounded"><Edit2 className="w-5 h-5" /></button>
-                                        <button onClick={() => handleDeleteWard(w.code)} className="text-red-400 hover:bg-red-100 p-2 rounded"><Trash2 className="w-5 h-5" /></button>
                                     </td>
                                 </tr>
                             ))}
@@ -485,7 +532,6 @@ export const MasterSettingsScreen: React.FC = () => {
                                 const parentWard = wards.find(w => w.code === r.wardCode);
                                 return (
                                 <tr key={r.code} className="hover:bg-blue-50/50">
-                                    <td className="px-6 py-4 font-mono">{r.code}</td>
                                     <td className="px-6 py-4 font-bold text-gray-600">
                                         {parentWard ? parentWard.name : <span className="text-red-400 text-sm">(未設定)</span>}
                                     </td>
@@ -494,7 +540,6 @@ export const MasterSettingsScreen: React.FC = () => {
                                     <td className="px-6 py-4 font-mono text-gray-500">{r.endDate || '-'}</td>
                                     <td className="px-6 py-4 flex justify-center gap-3">
                                         <button onClick={() => handleEditRoom(r)} className="text-blue-600 hover:bg-blue-100 p-2 rounded"><Edit2 className="w-5 h-5" /></button>
-                                        <button onClick={() => handleDeleteRoom(r.code)} className="text-red-400 hover:bg-red-100 p-2 rounded"><Trash2 className="w-5 h-5" /></button>
                                     </td>
                                 </tr>
                                 );
@@ -516,9 +561,8 @@ export const MasterSettingsScreen: React.FC = () => {
                                     <td className="px-6 py-4 font-mono text-gray-500">{u.startDate || '-'}</td>
                                     <td className="px-6 py-4 font-mono text-gray-500">{u.endDate || '-'}</td>
                                     <td className="px-6 py-4 flex justify-center gap-3">
-                                        <button onClick={() => handleEditUser(u)} className="text-blue-600 hover:bg-blue-100 p-2 rounded"><Edit2 className="w-5 h-5" /></button>
                                         {u.authority !== 'システム管理者アカウント' && (
-                                            <button onClick={() => handleDeleteUser(u)} className="text-red-400 hover:bg-red-100 p-2 rounded"><Trash2 className="w-5 h-5" /></button>
+                                            <button onClick={() => handleEditUser(u)} className="text-blue-600 hover:bg-blue-100 p-2 rounded"><Edit2 className="w-5 h-5" /></button>
                                         )}
                                     </td>
                                 </tr>
